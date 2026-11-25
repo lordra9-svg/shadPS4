@@ -300,7 +300,10 @@ public:
     }
 
     s32 GetConfiguration(libusb_device_handle* dev, s32* config) override {
-        config = nullptr;
+        if (!config) {
+            return LIBUSB_ERROR_INVALID_PARAM;
+        }
+        *config = m_configuration;
         return LIBUSB_SUCCESS;
     }
 
@@ -340,13 +343,13 @@ public:
         return 0;
     }
     s32 GetMaxPacketSize(libusb_device* dev, u8 endpoint) override {
-        libusb_device_descriptor* desc = nullptr;
+        libusb_device_descriptor desc{};
 
-        int r = GetDeviceDescriptor(dev, desc);
+        int r = GetDeviceDescriptor(dev, &desc);
         if (r < LIBUSB_SUCCESS) {
             return LIBUSB_ERROR_OTHER;
         }
-        return desc->bMaxPacketSize0;
+        return desc.bMaxPacketSize0;
     }
 
     s32 OpenDevice(libusb_device* dev, libusb_device_handle** dev_handle) override {
@@ -376,6 +379,7 @@ public:
     }
 
     s32 SetConfiguration(libusb_device_handle* dev_handle, s32 configuration) override {
+        m_configuration = configuration;
         return LIBUSB_SUCCESS;
     }
     s32 ClaimInterface(libusb_device_handle* dev_handle, s32 interface_number) override {
@@ -472,6 +476,7 @@ protected:
     virtual libusb_transfer_status HandleAsyncTransfer(libusb_transfer* transfer) = 0;
 
     std::list<libusb_transfer*> flight_list;
+    s32 m_configuration = 0;
 };
 
 } // namespace Libraries::Usbd
