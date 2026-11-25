@@ -312,11 +312,10 @@ public:
         const auto endpoint_descs = FillEndpointDescriptorPair();
         const auto interface_desc = FillInterfaceDescriptor(endpoint_descs);
 
-        const auto interface = static_cast<libusb_interface*>(calloc(1, sizeof(libusb_interface)));
-        interface->altsetting = interface_desc;
-        interface->num_altsetting = 1;
+        m_interface.altsetting = interface_desc;
+        m_interface.num_altsetting = 1;
 
-        const auto new_config = FillConfigDescriptor(interface);
+        const auto new_config = FillConfigDescriptor(&m_interface);
 
         ASSERT(endpoint_descs && interface_desc && new_config);
         *config = new_config;
@@ -472,6 +471,7 @@ protected:
     virtual libusb_transfer_status HandleAsyncTransfer(libusb_transfer* transfer) = 0;
 
     std::list<libusb_transfer*> flight_list;
+    libusb_interface m_interface{};
 };
 
 } // namespace Libraries::Usbd
