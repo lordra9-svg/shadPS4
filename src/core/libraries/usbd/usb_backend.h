@@ -350,7 +350,7 @@ public:
     }
 
     s32 OpenDevice(libusb_device* dev, libusb_device_handle** dev_handle) override {
-        auto* _dev_handle = static_cast<UsbDeviceHandle*>(calloc(1, sizeof(libusb_device_handle*)));
+        auto* _dev_handle = static_cast<UsbDeviceHandle*>(calloc(1, sizeof(UsbDeviceHandle)));
         if (!_dev_handle) {
             return LIBUSB_ERROR_NO_MEM;
         }
