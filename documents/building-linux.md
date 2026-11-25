@@ -37,9 +37,10 @@ sudo apt install build-essential clang-23 git cmake libasound2-dev \
 ```bash
 sudo dnf install ninja-build clang git cmake libatomic alsa-lib-devel \
     pipewire-jack-audio-connection-kit-devel openal-soft-devel \
-    openssl-devel libevdev-devel libudev-devel libXext-devel \
-    libXcursor-devel libXi-devel libXrandr-devel libXScrnSaver-devel \
-    vulkan-devel vulkan-validation-layers libpng-devel libuuid-devel
+    openssl-devel libevdev-devel systemd-devel libXext-devel \
+    libXtst-devel libXcursor-devel libXi-devel libXrandr-devel \
+    libXScrnSaver-devel vulkan-devel vulkan-validation-layers \
+    libpng-devel libuuid-devel
 ```
 
 #### Arch Linux
