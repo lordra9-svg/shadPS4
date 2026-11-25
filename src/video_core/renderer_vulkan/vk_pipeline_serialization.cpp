@@ -267,9 +267,20 @@ bool PipelineCache::LoadPipelineStage(Serialization::Archive& ar, size_t stage) 
 
     vk::ShaderModule module{};
 
+    std::optional<std::vector<u32>> patch{};
+    if (EmulatorSettings.IsPatchShaders()) {
+        patch = GetShaderPatch(program->info.pgm_hash, program->info.hw_stage, perm_idx, "spv");
+    }
+    std::span<const u32> code = spv;
+    if (patch) {
+        LOG_INFO(Loader, "Loaded patch for {} shader {:#x}", program->info.hw_stage,
+                 program->info.pgm_hash);
+        code = *patch;
+    }
+
     auto [it_pgm, new_program] = program_cache.try_emplace(program->info.pgm_hash);
     if (new_program) {
-        module = CompileSPV(spv, instance.GetDevice());
+        module = CompileSPV(code, instance.GetDevice());
         it_pgm.value() = std::move(program);
     } else {
         const auto& it = std::ranges::find(it_pgm.value()->modules, spec, &Program::Module::spec);
@@ -287,7 +298,7 @@ bool PipelineCache::LoadPipelineStage(Serialization::Archive& ar, size_t stage) 
             }
             module = it->module;
         } else {
-            module = CompileSPV(spv, instance.GetDevice());
+            module = CompileSPV(code, instance.GetDevice());
         }
     }
     it_pgm.value()->InsertPermut(module, std::move(spec), perm_idx);
