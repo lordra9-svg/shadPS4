@@ -102,7 +102,8 @@ void Emulator::Shutdown() {
     Libraries::SaveData::Backup::StopThread();
     Storage::DataBase::Instance().Close();
     play_time_thread.request_stop();
-    if (play_time_thread.joinable()) {
+    // A fatal assertion can fire on the play-time thread itself; joining it from there throws.
+    if (play_time_thread.joinable() && play_time_thread.get_id() != std::this_thread::get_id()) {
         play_time_thread.join();
     }
     const auto* elf_info = Common::Singleton<Common::ElfInfo>::Instance();
