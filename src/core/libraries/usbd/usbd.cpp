@@ -96,8 +96,17 @@ s32 PS4_SYSV_ABI sceUsbdGetConfigDescriptorByValue(SceUsbdDevice* device, u8 bCo
                                                    SceUsbdConfigDescriptor** config) {
     LOG_DEBUG(Lib_Usbd, "called");
 
-    return libusb_to_orbis_error(
-        libusb_get_config_descriptor_by_value(device, bConfigurationValue, config));
+    for (u8 config_index = 0; config_index < 255; ++config_index) {
+        const s32 result = usb_backend->GetConfigDescriptor(device, config_index, config);
+        if (result < LIBUSB_SUCCESS) {
+            return libusb_to_orbis_error(result);
+        }
+        if ((*config)->bConfigurationValue == bConfigurationValue) {
+            return libusb_to_orbis_error(LIBUSB_SUCCESS);
+        }
+        usb_backend->FreeConfigDescriptor(*config);
+    }
+    return libusb_to_orbis_error(LIBUSB_ERROR_NOT_FOUND);
 }
 
 void PS4_SYSV_ABI sceUsbdFreeConfigDescriptor(SceUsbdConfigDescriptor* config) {
