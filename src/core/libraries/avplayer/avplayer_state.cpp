@@ -175,51 +175,56 @@ bool AvPlayerState::GetStreamInfo(u32 stream_index, AvPlayerStreamInfo& info) {
 
 // Called inside GAME thread
 bool AvPlayerState::Start() {
-    std::unique_lock lock(m_source_mutex);
-    if (m_current_state != AvState::Ready && m_current_state != AvState::Stop) {
-        // Stop() acquires m_source_mutex itself, so release our exclusive lock first instead of
-        // taking the same shared_mutex shared while holding it exclusively.
-        lock.unlock();
-        if (!Stop()) {
-            LOG_ERROR(Lib_AvPlayer, "Could not start playback.");
+    {
+        std::unique_lock lock(m_source_mutex);
+        if (m_current_state != AvState::Ready && m_current_state != AvState::Stop) {
+            // Stop() acquires m_source_mutex itself, so release our exclusive lock first instead
+            // of taking the same shared_mutex shared while holding it exclusively.
+            lock.unlock();
+            if (!Stop()) {
+                LOG_ERROR(Lib_AvPlayer, "Could not start playback.");
+                return false;
+            }
+            lock.lock();
+        }
+
+        if (m_up_source == nullptr) {
+            LOG_ERROR(Lib_AvPlayer, "Could not start playback. No source.");
+            SetState(AvState::Error);
             return false;
         }
-        lock.lock();
-    }
 
-    if (m_up_source == nullptr) {
-        LOG_ERROR(Lib_AvPlayer, "Could not start playback. No source.");
-        SetState(AvState::Error);
-        return false;
+        m_eof_stop_event_sent = false;
+        SetState(AvState::Starting);
+        if (!m_up_source->Start()) {
+            LOG_ERROR(Lib_AvPlayer, "Could not start playback.");
+            SetState(AvState::Error);
+            return false;
+        }
+        SetState(AvState::Play);
     }
-
-    m_eof_stop_event_sent = false;
-    SetState(AvState::Starting);
-    if (!m_up_source->Start()) {
-        LOG_ERROR(Lib_AvPlayer, "Could not start playback.");
-        SetState(AvState::Error);
-        return false;
-    }
-    SetState(AvState::Play);
+    // The guest callback may re-enter the player, so notify after releasing the source lock.
     OnPlaybackStateChanged(AvState::Play);
     return true;
 }
 
 // Called inside GAME thread
 bool AvPlayerState::Pause() {
-    std::shared_lock lock(m_source_mutex);
-    if (m_current_state == AvState::EndOfFile) {
-        return true;
-    }
-    if (m_up_source == nullptr || m_current_state == AvState::Pause ||
-        m_current_state == AvState::Ready || m_current_state == AvState::Initial ||
-        m_current_state == AvState::Unknown || m_current_state == AvState::AddingSource) {
-        LOG_ERROR(Lib_AvPlayer, "Could not pause playback.");
-        return false;
-    }
-    m_up_source->Pause();
-    if (!SetState(AvState::Pause)) {
-        return false;
+    {
+        std::shared_lock lock(m_source_mutex);
+        if (m_current_state == AvState::EndOfFile) {
+            return true;
+        }
+        if (m_up_source == nullptr || m_current_state == AvState::Pause ||
+            m_current_state == AvState::Ready || m_current_state == AvState::Initial ||
+            m_current_state == AvState::Unknown || m_current_state == AvState::AddingSource) {
+            LOG_ERROR(Lib_AvPlayer, "Could not pause playback.");
+            return false;
+        }
+        m_up_source->Pause();
+        if (!SetState(AvState::Pause)) {
+            return false;
+        }
     }
     OnPlaybackStateChanged(AvState::Pause);
     return true;
@@ -227,14 +232,17 @@ bool AvPlayerState::Pause() {
 
 // Called inside GAME thread
 bool AvPlayerState::Resume() {
-    std::shared_lock lock(m_source_mutex);
-    if (m_up_source == nullptr || m_current_state != AvState::Pause) {
-        LOG_ERROR(Lib_AvPlayer, "Could not resume playback.");
-        return false;
+    AvState state = AvState::Unknown;
+    {
+        std::shared_lock lock(m_source_mutex);
+        if (m_up_source == nullptr || m_current_state != AvState::Pause) {
+            LOG_ERROR(Lib_AvPlayer, "Could not resume playback.");
+            return false;
+        }
+        m_up_source->Resume();
+        state = m_previous_state.load();
+        SetState(state);
     }
-    m_up_source->Resume();
-    const auto state = m_previous_state.load();
-    SetState(state);
     OnPlaybackStateChanged(state);
     return true;
 }
@@ -291,17 +299,19 @@ bool AvPlayerState::EnableStream(u32 stream_index) {
 
 // Called inside GAME thread
 bool AvPlayerState::Stop() {
-    std::shared_lock lock(m_source_mutex);
-    if (m_up_source == nullptr || m_current_state == AvState::Stop) {
-        return false;
+    {
+        std::shared_lock lock(m_source_mutex);
+        if (m_up_source == nullptr || m_current_state == AvState::Stop) {
+            return false;
+        }
+        if (!m_up_source->Stop()) {
+            return false;
+        }
+        if (!SetState(AvState::Stop)) {
+            return false;
+        }
+        m_eof_stop_event_sent = true;
     }
-    if (!m_up_source->Stop()) {
-        return false;
-    }
-    if (!SetState(AvState::Stop)) {
-        return false;
-    }
-    m_eof_stop_event_sent = true;
     OnPlaybackStateChanged(AvState::Stop);
     return true;
 }
