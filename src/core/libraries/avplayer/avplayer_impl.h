@@ -34,6 +34,12 @@ public:
     s32 Stop();
     bool SetLooping(bool is_looping);
 
+    bool BeginClosing();
+    bool IsDispatchingEvent() const;
+    /// Destroys the player from a helper thread once the in-flight event callback returns and
+    /// the controller thread has been joined.
+    void RequestDeferredClose();
+
 private:
     // Memory Replacement
     static void* PS4_SYSV_ABI Allocate(void* handle, u32 alignment, u32 size);

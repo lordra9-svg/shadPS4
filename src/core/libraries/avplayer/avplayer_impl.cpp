@@ -1,9 +1,12 @@
 // SPDX-FileCopyrightText: Copyright 2024 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include "common/logging/log.h"
 #include "core/libraries/avplayer/avplayer_common.h"
 #include "core/libraries/avplayer/avplayer_error.h"
 #include "core/libraries/avplayer/avplayer_impl.h"
+
+#include <thread>
 
 namespace Libraries::AvPlayer {
 
@@ -222,6 +225,27 @@ bool AvPlayer::SetLooping(bool is_looping) {
         return false;
     }
     return m_state->SetLooping(is_looping);
+}
+
+bool AvPlayer::BeginClosing() {
+    return m_state != nullptr && m_state->BeginClosing();
+}
+
+bool AvPlayer::IsDispatchingEvent() const {
+    return m_state != nullptr && m_state->IsDispatchingEvent();
+}
+
+void AvPlayer::RequestDeferredClose() {
+    try {
+        std::thread([this] {
+            m_state->WaitForEventDispatch();
+            m_state->StopController();
+            delete this;
+        }).detach();
+    } catch (const std::exception& e) {
+        // Leaking the player is preferable to destroying it while its callback is still running.
+        LOG_ERROR(Lib_AvPlayer, "Could not defer player close: {}", e.what());
+    }
 }
 
 } // namespace Libraries::AvPlayer

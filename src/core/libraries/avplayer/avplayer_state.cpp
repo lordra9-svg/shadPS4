@@ -114,11 +114,13 @@ AvPlayerState::AvPlayerState(const AvPlayerInitData& init_data)
 }
 
 AvPlayerState::~AvPlayerState() {
+    // Stop the controller first so it cannot dispatch or touch the source while teardown runs.
+    m_closing.store(true);
+    m_controller_thread.Stop();
     {
         std::unique_lock lock(m_source_mutex);
         m_up_source.reset();
     }
-    m_controller_thread.Stop();
     m_event_queue.Clear();
 }
 
@@ -346,6 +348,22 @@ bool AvPlayerState::SetLooping(bool is_looping) {
     return true;
 }
 
+bool AvPlayerState::BeginClosing() {
+    return !m_closing.exchange(true);
+}
+
+bool AvPlayerState::IsDispatchingEvent() const {
+    return m_event_dispatch.IsActive();
+}
+
+void AvPlayerState::WaitForEventDispatch() {
+    m_event_dispatch.WaitForIdle();
+}
+
+void AvPlayerState::StopController() {
+    m_controller_thread.Stop();
+}
+
 // May be called from different threads
 void AvPlayerState::OnWarning(u32 id) {
     // Forward to CONTROLLER thread
@@ -428,11 +446,16 @@ std::optional<bool> AvPlayerState::OnBufferingCheckEvent(u32 num_frames) {
 
 // Called inside CONTROLLER thread
 void AvPlayerState::EmitEvent(AvPlayerEvents event_id, void* event_data) {
+    if (m_closing.load()) {
+        return;
+    }
     LOG_INFO(Lib_AvPlayer, "Sending event to the game: id = {}", magic_enum::enum_name(event_id));
     const auto callback = m_init_data.event_replacement.event_callback;
     if (callback) {
+        m_event_dispatch.Begin();
         const auto ptr = m_init_data.event_replacement.object_ptr;
         callback(ptr, event_id, 0, event_data);
+        m_event_dispatch.End();
     }
 }
 

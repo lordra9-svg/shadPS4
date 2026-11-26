@@ -39,7 +39,15 @@ s32 PS4_SYSV_ABI sceAvPlayerClose(AvPlayerHandle handle) {
     if (handle == nullptr) {
         return ORBIS_AVPLAYER_ERROR_INVALID_PARAMS;
     }
-    delete handle;
+    if (handle->BeginClosing()) {
+        if (handle->IsDispatchingEvent()) {
+            // The game is closing the player from inside an event callback. Destroying the
+            // state now would pull it out from under the running dispatch stack.
+            handle->RequestDeferredClose();
+        } else {
+            delete handle;
+        }
+    }
     return ORBIS_OK;
 }
 

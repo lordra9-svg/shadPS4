@@ -11,6 +11,7 @@
 #include <string_view>
 
 #include "core/libraries/avplayer/avplayer.h"
+#include "core/libraries/avplayer/avplayer_event_dispatch.h"
 #include "core/libraries/avplayer/avplayer_source.h"
 #include "core/libraries/kernel/threads.h"
 
@@ -40,6 +41,14 @@ public:
     bool IsActive();
     u64 CurrentTime();
     bool SetLooping(bool is_looping);
+
+    /// Marks the player as closing. Returns false when a close was already requested.
+    bool BeginClosing();
+    bool IsDispatchingEvent() const;
+    void WaitForEventDispatch();
+    /// Stops and joins the controller thread. Must be called from a thread other than the
+    /// controller itself.
+    void StopController();
 
 private:
     // Event Replacement
@@ -92,6 +101,8 @@ private:
     std::mutex m_event_handler_mutex{};
     Kernel::Thread m_controller_thread{};
     AvPlayerQueue<AvPlayerEvent> m_event_queue{};
+    EventDispatchTracker m_event_dispatch{};
+    std::atomic_bool m_closing{false};
 };
 
 } // namespace Libraries::AvPlayer
