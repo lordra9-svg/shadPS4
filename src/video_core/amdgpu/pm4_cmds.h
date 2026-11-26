@@ -339,21 +339,20 @@ enum class InterruptSelect : u32 {
     IrqUndocumented = 3,
 };
 
-static u64 GetGpuClock64() {
-    auto now = std::chrono::high_resolution_clock::now();
-    auto duration = now.time_since_epoch();
-    auto ticks = std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
-    return static_cast<u64>(ticks);
-}
-
-static u64 GetGpuPerfCounter() {
+static u64 GetGpuClockTicks() {
     const auto cpu_freq = Libraries::Kernel::sceKernelGetTscFrequency();
     const auto gpu_freq = Libraries::GnmDriver::sceGnmGetGpuCoreClockFrequency();
 
     const auto cpu_cycles = Libraries::Kernel::sceKernelReadTsc();
-    const auto gpu_cycles = Common::MultiplyAndDivide64(cpu_cycles, gpu_freq, cpu_freq);
+    return Common::MultiplyAndDivide64(cpu_cycles, gpu_freq, cpu_freq);
+}
 
-    return gpu_cycles;
+static u64 GetGpuClock64() {
+    return GetGpuClockTicks();
+}
+
+static u64 GetGpuPerfCounter() {
+    return GetGpuClockTicks();
 }
 
 // VGT_EVENT_INITIATOR.EVENT_TYPE
