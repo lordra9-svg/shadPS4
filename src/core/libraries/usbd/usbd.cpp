@@ -121,7 +121,7 @@ u8 PS4_SYSV_ABI sceUsbdGetDeviceAddress(SceUsbdDevice* device) {
 SceUsbdSpeed PS4_SYSV_ABI sceUsbdGetDeviceSpeed(SceUsbdDevice* device) {
     LOG_DEBUG(Lib_Usbd, "called");
 
-    return static_cast<SceUsbdSpeed>(libusb_get_device_speed(device));
+    return static_cast<SceUsbdSpeed>(usb_backend->GetDeviceSpeed(device));
 }
 
 s32 PS4_SYSV_ABI sceUsbdGetMaxPacketSize(SceUsbdDevice* device, u8 endpoint) {

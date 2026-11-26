@@ -83,6 +83,7 @@ public:
 
     virtual u8 GetBusNumber(libusb_device* dev) = 0;
     virtual u8 GetDeviceAddress(libusb_device* dev) = 0;
+    virtual s32 GetDeviceSpeed(libusb_device* dev) = 0;
     virtual s32 GetMaxPacketSize(libusb_device* dev, u8 endpoint) = 0;
 
     virtual s32 OpenDevice(libusb_device* dev, libusb_device_handle** dev_handle) = 0;
@@ -160,6 +161,9 @@ public:
     }
     u8 GetDeviceAddress(libusb_device* dev) override {
         return libusb_get_device_address(dev);
+    }
+    s32 GetDeviceSpeed(libusb_device* dev) override {
+        return libusb_get_device_speed(dev);
     }
     s32 GetMaxPacketSize(libusb_device* dev, u8 endpoint) override {
         return libusb_get_max_packet_size(dev, endpoint);
@@ -339,6 +343,9 @@ public:
     u8 GetDeviceAddress(libusb_device* dev) override {
         return 0;
     }
+    s32 GetDeviceSpeed(libusb_device* dev) override {
+        return reinterpret_cast<UsbDevice*>(dev)->speed;
+    }
     s32 GetMaxPacketSize(libusb_device* dev, u8 endpoint) override {
         libusb_device_descriptor* desc = nullptr;
 
@@ -370,6 +377,7 @@ public:
         fake->bus_number = 0;
         fake->port_number = 0;
         fake->device_address = 0;
+        fake->speed = LIBUSB_SPEED_FULL;
         fake->device_descriptor = *desc;
         fake->ctx = g_libusb_context;
         return reinterpret_cast<libusb_device*>(fake);
