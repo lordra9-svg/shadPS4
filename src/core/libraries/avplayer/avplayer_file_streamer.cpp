@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <algorithm> // std::max, std::min
+#include <string>
 #include "core/libraries/avplayer/avplayer_file_streamer.h"
 
 extern "C" {
@@ -30,16 +31,26 @@ AvPlayerFileStreamer::~AvPlayerFileStreamer() {
 
 bool AvPlayerFileStreamer::Init(std::string_view path) {
     const auto ptr = m_file_replacement.object_ptr;
-    m_fd = m_file_replacement.open(ptr, path.data());
+    // The guest open callback takes a C string, but AddSourceEx passes a length-delimited URI
+    // that need not be NUL-terminated. Copy it before handing the pointer to guest code.
+    const std::string terminated_path{path};
+    m_fd = m_file_replacement.open(ptr, terminated_path.c_str());
     if (m_fd < 0) {
         return false;
     }
     m_file_size = m_file_replacement.size(ptr);
     // avio_buffer is deallocated in `avio_context_free`
     const auto avio_buffer = reinterpret_cast<u8*>(av_malloc(AVPLAYER_AVIO_BUFFER_SIZE));
+    if (avio_buffer == nullptr) {
+        return false;
+    }
     m_avio_context =
         avio_alloc_context(avio_buffer, AVPLAYER_AVIO_BUFFER_SIZE, 0, this,
                            &AvPlayerFileStreamer::ReadPacket, nullptr, &AvPlayerFileStreamer::Seek);
+    if (m_avio_context == nullptr) {
+        av_free(avio_buffer);
+        return false;
+    }
     return true;
 }
 
