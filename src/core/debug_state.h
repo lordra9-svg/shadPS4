@@ -139,6 +139,7 @@ class DebugStateImpl {
 
     std::mutex guest_threads_mutex{};
     std::vector<ThreadID> guest_threads{};
+    std::vector<ThreadID> paused_threads{};
     std::atomic_bool is_guest_threads_paused = false;
     u64 pause_time{};
 

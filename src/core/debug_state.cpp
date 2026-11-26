@@ -72,12 +72,17 @@ void DebugStateImpl::PauseGuestThreads() {
     }
     bool self_guest = false;
     ThreadID self_id = ThisThreadID();
+    paused_threads.clear();
     for (const auto& id : guest_threads) {
         if (id == self_id) {
             self_guest = true;
         } else {
             PauseThread(id);
+            paused_threads.push_back(id);
         }
+    }
+    if (self_guest) {
+        paused_threads.push_back(self_id);
     }
     pause_time = Libraries::Kernel::Dev::GetClock()->GetUptime();
     is_guest_threads_paused = true;
@@ -95,9 +100,10 @@ void DebugStateImpl::ResumeGuestThreads() {
 
     u64 delta_time = Libraries::Kernel::Dev::GetClock()->GetUptime() - pause_time;
     Libraries::Kernel::Dev::GetInitialPtc() += delta_time;
-    for (const auto& id : guest_threads) {
+    for (const auto& id : paused_threads) {
         ResumeThread(id);
     }
+    paused_threads.clear();
     is_guest_threads_paused = false;
 }
 
