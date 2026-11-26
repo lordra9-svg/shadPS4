@@ -1206,6 +1206,10 @@ int PS4_SYSV_ABI posix_pthread_suspend_user_context_np(PthreadT thread) {
     if (int ret = thread_state->FindThread(thread, false); ret != 0) {
         return ret;
     }
+    if (static_cast<u32>(thread->flags & ThreadFlags::Suspended) != 0) {
+        thread->lock->unlock();
+        return 0;
+    }
     thread->flags |= ThreadFlags::Suspended;
     thread->lock->unlock();
 
@@ -1246,6 +1250,10 @@ int PS4_SYSV_ABI posix_pthread_resume_user_context_np(PthreadT thread) {
     auto* thread_state = ThrState::Instance();
     if (int ret = thread_state->FindThread(thread, false); ret != 0) {
         return ret;
+    }
+    if (static_cast<u32>(thread->flags & ThreadFlags::Suspended) == 0) {
+        thread->lock->unlock();
+        return 0;
     }
     thread->flags &= ~ThreadFlags::Suspended;
     thread->lock->unlock();
