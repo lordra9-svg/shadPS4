@@ -607,7 +607,7 @@ int PS4_SYSV_ABI sceKernelWaitEqueue(OrbisKernelEqueue eq, OrbisKernelEvent* ev,
     TRACE_HINT(equeue->GetName());
     LOG_TRACE(Kernel_Event, "equeue = {} num = {}", equeue->GetName(), num);
 
-    if (ev == nullptr) {
+    if (ev == nullptr || out == nullptr) {
         return ORBIS_KERNEL_ERROR_EFAULT;
     }
 
