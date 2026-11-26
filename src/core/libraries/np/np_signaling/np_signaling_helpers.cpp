@@ -21,6 +21,7 @@
 #include "core/libraries/np/np_common.h"
 #include "core/libraries/np/np_error.h"
 #include "core/libraries/np/np_handler/np_handler.h"
+#include "core/libraries/np/np_signaling/dispatch_lifecycle.h"
 #include "core/libraries/np/np_signaling/np_signaling.h"
 #include "core/libraries/np/np_signaling/np_signaling_helpers.h"
 #include "core/libraries/np/np_signaling/np_signaling_state.h"
@@ -336,8 +337,18 @@ static PS4_SYSV_ABI void* DispatchThreadFunc(void*) {
     return nullptr;
 }
 
+static DispatchLifecycle g_dispatch_lifecycle;
+
 static void StartDispatchThread(s32 priority, u64 affinity_mask, u64 stack_size) {
     auto& state = NpHandler::GetInstance().GetSignalingState();
+    // Held across creation so a concurrent stop cannot clear dispatch_stop underneath us.
+    std::lock_guard lifecycle{g_dispatch_lifecycle.Mutex()};
+    if (!g_dispatch_lifecycle.IsStopped()) {
+        LOG_DEBUG(Lib_NpSignaling, "Dispatch thread already running or stopping");
+        return;
+    }
+    g_dispatch_lifecycle.MarkRunning();
+
     std::lock_guard<std::mutex> lock(state.dispatch_mutex);
     state.dispatch_stop = false;
     if (!state.dispatch_thread) {
@@ -348,6 +359,12 @@ static void StartDispatchThread(s32 priority, u64 affinity_mask, u64 stack_size)
 
 static void StopDispatchThread() {
     auto& state = NpHandler::GetInstance().GetSignalingState();
+    // Held across the join so a concurrent start waits instead of clearing dispatch_stop.
+    std::lock_guard lifecycle{g_dispatch_lifecycle.Mutex()};
+    if (!g_dispatch_lifecycle.IsRunning()) {
+        return;
+    }
+    g_dispatch_lifecycle.MarkStopping();
     {
         std::lock_guard<std::mutex> lock(state.dispatch_mutex);
         state.dispatch_stop = true;
@@ -358,6 +375,7 @@ static void StopDispatchThread() {
         NpCommon::sceNpJoinThread(state.dispatch_thread, nullptr);
         state.dispatch_thread = {};
     }
+    g_dispatch_lifecycle.MarkStopped();
 }
 
 void RegisterRuntimeHooks() {
