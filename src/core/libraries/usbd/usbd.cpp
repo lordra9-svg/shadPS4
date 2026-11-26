@@ -173,7 +173,7 @@ s32 PS4_SYSV_ABI sceUsbdClaimInterface(SceUsbdDeviceHandle* dev_handle, s32 inte
 s32 PS4_SYSV_ABI sceUsbdReleaseInterface(SceUsbdDeviceHandle* dev_handle, s32 interface_number) {
     LOG_DEBUG(Lib_Usbd, "called");
 
-    return libusb_to_orbis_error(libusb_release_interface(dev_handle, interface_number));
+    return libusb_to_orbis_error(usb_backend->ReleaseInterface(dev_handle, interface_number));
 }
 
 SceUsbdDeviceHandle* PS4_SYSV_ABI sceUsbdOpenDeviceWithVidPid(u16 vendor_id, u16 product_id) {
