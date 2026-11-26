@@ -1329,14 +1329,14 @@ void Start() {
 
 void Stop() {
     auto& state = NpHandler::GetInstance().GetSignalingState();
-    {
-        std::lock_guard lock(state.runtime_thread_mutex);
-        if (state.context_refs > 0) {
-            return;
-        }
-        state.runtime_stop.store(true, std::memory_order_relaxed);
-        state.activation_cv.notify_all();
+    // Keep the lock across the joins so a concurrent Start() cannot observe a joinable thread and
+    // assign over it (which would terminate the process).
+    std::lock_guard lock(state.runtime_thread_mutex);
+    if (state.context_refs > 0) {
+        return;
     }
+    state.runtime_stop.store(true, std::memory_order_relaxed);
+    state.activation_cv.notify_all();
     if (state.runtime_thread.joinable()) {
         state.runtime_thread.join();
     }
