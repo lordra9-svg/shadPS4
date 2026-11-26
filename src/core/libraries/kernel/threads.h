@@ -79,8 +79,11 @@ public:
 
     void Join() {
         if (thread) {
-            posix_pthread_join(thread, nullptr);
-            thread = nullptr;
+            if (posix_pthread_join(thread, nullptr) == 0) {
+                thread = nullptr;
+            }
+            // On failure (for example EDEADLK when a thread joins itself, or ENOTSUP when
+            // another thread is already joining) keep the handle so an owner can retry.
         }
     }
 
@@ -93,9 +96,12 @@ public:
             stop.request_stop();
             Join();
         }
-        thread = nullptr;
-        func = nullptr;
-        stop = std::stop_source{};
+        // Only release the callback state once the thread is actually joined. Clearing func
+        // while a failed join left the thread running would race RunWrapper.
+        if (!Joinable()) {
+            func = nullptr;
+            stop = std::stop_source{};
+        }
     }
 
     static void* PS4_SYSV_ABI RunWrapper(void* arg) {
