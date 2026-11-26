@@ -55,9 +55,11 @@ sudo pacman -S base-devel clang git cmake sndio jack2 openal \
 
 ```bash
 sudo zypper install clang git cmake libasound2 libpulse-devel \
-    libsndio7 libjack-devel openal-soft-devel libopenssl-devel \
+    sndio libjack-devel openal-soft-devel libopenssl-devel \
     zlib-devel libedit-devel systemd-devel libevdev-devel \
-    vulkan-devel vulkan-validationlayers libpng-devel
+    libX11-devel libXext-devel libXcursor-devel libXi-devel \
+    libXrandr-devel libXss-devel libXtst-devel libXfixes-devel \
+    libXrender-devel vulkan-devel vulkan-validationlayers libpng-devel
 ```
 
 #### Nix Flake Development Shell
