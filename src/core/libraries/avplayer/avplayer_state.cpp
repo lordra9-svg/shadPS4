@@ -5,8 +5,10 @@
 #include "common/logging/log.h"
 #include "common/thread.h"
 #include "core/libraries/avplayer/avplayer_error.h"
+#include "core/libraries/avplayer/avplayer_language.h"
 #include "core/libraries/avplayer/avplayer_state.h"
 #include "core/libraries/kernel/process.h"
+#include "core/memory.h"
 
 #include <magic_enum/magic_enum.hpp>
 
@@ -107,7 +109,9 @@ AvPlayerState::AvPlayerState(const AvPlayerInitData& init_data)
     }
     m_init_data.event_replacement.object_ptr = this;
     if (init_data.default_language != nullptr) {
-        std::memcpy(m_default_language, init_data.default_language, sizeof(m_default_language));
+        const bool is_mapped = Core::Memory::Instance()->IsValidMapping(
+            reinterpret_cast<VAddr>(init_data.default_language), LanguageCodeLength);
+        CopyLanguageCode(m_default_language, init_data.default_language, is_mapped);
     }
     SetState(AvState::Initial);
     StartControllerThread();
