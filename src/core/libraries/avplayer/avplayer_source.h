@@ -52,14 +52,7 @@ public:
     }
 
     ~GuestBuffer() {
-        if (m_data != nullptr) {
-            if (m_is_texture) {
-                DeallocateTexture(m_memory_replacement, m_data);
-            } else {
-                Deallocate(m_memory_replacement, m_data);
-            }
-            m_data = {};
-        }
+        Release();
     }
 
     GuestBuffer(const GuestBuffer&) noexcept = delete;
@@ -72,7 +65,14 @@ public:
     };
 
     GuestBuffer& operator=(GuestBuffer&& r) noexcept {
-        std::swap(m_data, r.m_data);
+        if (this != &r) {
+            Release();
+            m_memory_replacement = r.m_memory_replacement;
+            m_data = r.m_data;
+            m_size = r.m_size;
+            m_is_texture = r.m_is_texture;
+            r.m_data = nullptr;
+        }
         return *this;
     }
 
@@ -85,6 +85,17 @@ public:
     }
 
 private:
+    void Release() noexcept {
+        if (m_data != nullptr) {
+            if (m_is_texture) {
+                DeallocateTexture(m_memory_replacement, m_data);
+            } else {
+                Deallocate(m_memory_replacement, m_data);
+            }
+            m_data = nullptr;
+        }
+    }
+
     static u8* Allocate(const AvPlayerMemAllocator& memory_replacement, u32 align, u32 size) {
         return reinterpret_cast<u8*>(
             memory_replacement.allocate(memory_replacement.object_ptr, align, size));
@@ -104,7 +115,7 @@ private:
         memory_replacement.deallocate_texture(memory_replacement.object_ptr, ptr);
     }
 
-    const AvPlayerMemAllocator& m_memory_replacement;
+    AvPlayerMemAllocator m_memory_replacement{};
     u8* m_data = nullptr;
     u64 m_size = 0;
     bool m_is_texture = false;
