@@ -9,6 +9,7 @@
 #include "common/thread.h"
 #include "core/memory.h"
 #include "vdecsw_frame_buffer.h"
+#include "vdecsw_guest_buffer.h"
 #include "video_utils.h"
 #include "videodec_error.h"
 
@@ -46,18 +47,14 @@ VdecDecoder::~VdecDecoder() {
 }
 
 s32 VdecDecoder::SetDecodeInput(const OrbisVdecswInputData& input_data) {
-    if (!input_data.au_data) {
-        LOG_ERROR(Lib_Vdecsw, "ORBIS_VDECSW_ERROR_ACCESS_UNIT_POINTER");
-        return ORBIS_VDECSW_ERROR_ACCESS_UNIT_POINTER;
-    }
-    if (input_data.au_size == 0) {
-        LOG_ERROR(Lib_Vdecsw, "ORBIS_VDECSW_ERROR_ACCESS_UNIT_SIZE");
-        return ORBIS_VDECSW_ERROR_ACCESS_UNIT_SIZE;
-    }
-    if (!Core::Memory::Instance()->IsValidMapping(reinterpret_cast<VAddr>(input_data.au_data),
-                                                  input_data.au_size)) {
-        LOG_ERROR(Lib_Vdecsw, "ORBIS_VDECSW_ERROR_ACCESS_UNIT_POINTER");
-        return ORBIS_VDECSW_ERROR_ACCESS_UNIT_POINTER;
+    const s32 validation = ValidateGuestBuffer(
+        input_data.au_data, input_data.au_size,
+        Core::Memory::Instance()->IsValidMapping(reinterpret_cast<VAddr>(input_data.au_data),
+                                                 input_data.au_size),
+        ORBIS_VDECSW_ERROR_ACCESS_UNIT_POINTER, ORBIS_VDECSW_ERROR_ACCESS_UNIT_SIZE);
+    if (validation != 0) {
+        LOG_ERROR(Lib_Vdecsw, "SetDecodeInput failed validation: {:#x}", validation);
+        return validation;
     }
 
     // The access unit data is copied because the game is allowed to reuse the
@@ -121,18 +118,14 @@ s32 VdecDecoder::TrySyncDecodeInput(OrbisVdecswInputResult& input_result) {
 }
 
 s32 VdecDecoder::SetDecodeOutput(const OrbisVdecswFrameBuffer& frame_buffer) {
-    if (!frame_buffer.frame_buffer) {
-        LOG_ERROR(Lib_Vdecsw, "ORBIS_VDECSW_ERROR_FRAME_BUFFER_POINTER");
-        return ORBIS_VDECSW_ERROR_FRAME_BUFFER_POINTER;
-    }
-    if (frame_buffer.frame_buffer_size == 0) {
-        LOG_ERROR(Lib_Vdecsw, "ORBIS_VDECSW_ERROR_FRAME_BUFFER_SIZE");
-        return ORBIS_VDECSW_ERROR_FRAME_BUFFER_SIZE;
-    }
-    if (!Core::Memory::Instance()->IsValidMapping(
-            reinterpret_cast<VAddr>(frame_buffer.frame_buffer), frame_buffer.frame_buffer_size)) {
-        LOG_ERROR(Lib_Vdecsw, "ORBIS_VDECSW_ERROR_FRAME_BUFFER_POINTER");
-        return ORBIS_VDECSW_ERROR_FRAME_BUFFER_POINTER;
+    const s32 validation = ValidateGuestBuffer(
+        frame_buffer.frame_buffer, frame_buffer.frame_buffer_size,
+        Core::Memory::Instance()->IsValidMapping(reinterpret_cast<VAddr>(frame_buffer.frame_buffer),
+                                                 frame_buffer.frame_buffer_size),
+        ORBIS_VDECSW_ERROR_FRAME_BUFFER_POINTER, ORBIS_VDECSW_ERROR_FRAME_BUFFER_SIZE);
+    if (validation != 0) {
+        LOG_ERROR(Lib_Vdecsw, "SetDecodeOutput failed validation: {:#x}", validation);
+        return validation;
     }
 
     std::scoped_lock lock{m_mutex};
