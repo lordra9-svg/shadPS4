@@ -3,6 +3,7 @@
 
 #include "save_memory.h"
 
+#include <algorithm>
 #include <condition_variable>
 #include <filesystem>
 #include <mutex>
@@ -210,10 +211,13 @@ void ReadMemory(u32 slot_id, void* buf, size_t buf_size, int64_t offset) {
             f.ReadSpan(std::span{memory});
         }
     }
-    s64 read_size = buf_size;
-    if (read_size + offset > memory.size()) {
-        read_size = memory.size() - offset;
+    if (!buf || offset < 0 || static_cast<size_t>(offset) >= memory.size()) {
+        LOG_ERROR(Lib_SaveData,
+                  "ReadMemory: {} bytes at offset {} are outside the save memory ({} bytes)",
+                  buf_size, offset, memory.size());
+        return;
     }
+    const size_t read_size = std::min(buf_size, memory.size() - static_cast<size_t>(offset));
     std::memcpy(buf, memory.data() + offset, read_size);
 }
 
@@ -221,8 +225,12 @@ void WriteMemory(u32 slot_id, void* buf, size_t buf_size, int64_t offset) {
     std::lock_guard lk{g_slot_mtx};
     auto& data = g_attached_slots[slot_id];
     auto& memory = data.memory_cache;
-    if (offset + buf_size > memory.size()) {
-        memory.resize(offset + buf_size);
+    if (!buf || offset < 0 || static_cast<size_t>(offset) > memory.size() ||
+        buf_size > memory.size() - static_cast<size_t>(offset)) {
+        LOG_ERROR(Lib_SaveData,
+                  "WriteMemory: {} bytes at offset {} exceed the save memory ({} bytes)", buf_size,
+                  offset, memory.size());
+        return;
     }
     std::memcpy(memory.data() + offset, buf, buf_size);
     PersistMemory(slot_id, false);
