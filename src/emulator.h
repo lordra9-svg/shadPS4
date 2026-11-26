@@ -51,9 +51,9 @@ public:
 private:
     void LoadSystemModules(const std::string& game_serial);
 
-    Core::MemoryManager* memory;
-    Input::GameControllers* controllers;
-    Core::Linker* linker;
+    Core::MemoryManager* memory{};
+    Input::GameControllers* controllers{};
+    Core::Linker* linker{};
     std::unique_ptr<Frontend::WindowSDL> window;
     std::chrono::steady_clock::time_point start_time;
     std::jthread play_time_thread;
