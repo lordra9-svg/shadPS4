@@ -10,6 +10,7 @@
 #include "video_core/renderer_vulkan/vk_scheduler.h"
 #include "video_core/texture_cache/blit_helper.h"
 #include "video_core/texture_cache/image.h"
+#include "video_core/texture_cache/subresource_range.h"
 
 #include <vk_mem_alloc.h>
 
@@ -265,14 +266,24 @@ void Image::GetBarriers(Barriers& barriers, BackingImage& image_backing, vk::Ima
         // In case of partial transition, we need to change the specified subresources only.
         // Otherwise all subresources need to be set to the same state so we can use a full
         // resource transition for the next time.
-        const u32 start_mip = needs_partial_transition ? subres_range->base.level : u16{0};
-        const u32 end_mip = needs_partial_transition
-                                ? subres_range->base.level + subres_range->extent.levels
-                                : info.resources.levels;
-        const u32 start_layer = needs_partial_transition ? subres_range->base.layer : u16{0};
-        const u32 end_layer = needs_partial_transition
-                                  ? subres_range->base.layer + subres_range->extent.layers
-                                  : info.resources.layers;
+        const u32 base_mip = needs_partial_transition ? subres_range->base.level : 0u;
+        const u32 mip_count =
+            needs_partial_transition ? subres_range->extent.levels : info.resources.levels;
+        const u32 base_layer = needs_partial_transition ? subres_range->base.layer : 0u;
+        const u32 layer_count =
+            needs_partial_transition ? subres_range->extent.layers : info.resources.layers;
+
+        const auto [start_mip, end_mip] =
+            ClampSubresourceRange(base_mip, mip_count, info.resources.levels);
+        const auto [start_layer, end_layer] =
+            ClampSubresourceRange(base_layer, layer_count, info.resources.layers);
+        if (start_mip >= end_mip || start_layer >= end_layer) {
+            LOG_WARNING(Render_Vulkan,
+                        "Subresource range mips {}+{}, layers {}+{} is outside image {}/{}",
+                        base_mip, mip_count, base_layer, layer_count, info.resources.levels,
+                        info.resources.layers);
+            return;
+        }
         for (u32 mip = start_mip; mip < end_mip; ++mip) {
             for (u32 layer = start_layer; layer < end_layer; ++layer) {
                 // NOTE: these loops may produce a lot of small barriers.
