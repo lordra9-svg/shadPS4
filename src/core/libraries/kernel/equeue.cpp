@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2024-2026 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <algorithm>
 #include <span>
 #include <thread>
 #include <magic_enum/magic_enum.hpp>
@@ -415,41 +416,48 @@ bool EqueueInternal::AddSmallTimer(EqueueEvent& ev) {
         std::scoped_lock lock{m_mutex};
         m_small_timers[st.event.ident] = std::move(st);
     }
+    m_cond.notify_all();
     return true;
 }
 
 int EqueueInternal::WaitForSmallTimer(OrbisKernelEvent* ev, int num, u32 micros) {
     ASSERT(num >= 1);
 
-    auto curr_clock = std::chrono::steady_clock::now();
-    const auto wait_end_us = (micros == 0) ? std::chrono::steady_clock::time_point::max()
-                                           : curr_clock + std::chrono::microseconds{micros};
-    int count = 0;
-    do {
-        curr_clock = std::chrono::steady_clock::now();
-        {
-            std::scoped_lock lock{m_mutex};
-            if (m_stopped) {
-                return 0;
-            }
-            for (auto it = m_small_timers.begin(); it != m_small_timers.end() && count < num;) {
-                const SmallTimer& st = it->second;
+    const auto wait_end =
+        (micros == 0) ? std::chrono::steady_clock::time_point::max()
+                      : std::chrono::steady_clock::now() + std::chrono::microseconds{micros};
 
-                if (curr_clock - st.added >= st.interval) {
-                    ev[count++] = st.event;
-                    it = m_small_timers.erase(it);
-                } else {
-                    ++it;
-                }
-            }
-
-            if (count > 0)
-                return count;
+    std::unique_lock lock{m_mutex};
+    while (true) {
+        if (m_stopped) {
+            return 0;
         }
-        std::this_thread::yield();
-    } while (curr_clock < wait_end_us);
 
-    return 0;
+        const auto now = std::chrono::steady_clock::now();
+        int count = 0;
+        auto nearest = std::chrono::steady_clock::time_point::max();
+        for (auto it = m_small_timers.begin(); it != m_small_timers.end() && count < num;) {
+            const SmallTimer& st = it->second;
+
+            if (now - st.added >= st.interval) {
+                ev[count++] = st.event;
+                it = m_small_timers.erase(it);
+            } else {
+                nearest = std::min(nearest, st.added + st.interval);
+                ++it;
+            }
+        }
+
+        if (count > 0) {
+            return count;
+        }
+        if (nearest == std::chrono::steady_clock::time_point::max() || now >= wait_end) {
+            return 0;
+        }
+
+        // Sleep until the nearest timer, the wait deadline, or a stop request.
+        m_cond.wait_until(lock, std::min(nearest, wait_end), [this] { return m_stopped; });
+    }
 }
 
 bool EqueueInternal::EventExists(u64 id, s16 filter) {
