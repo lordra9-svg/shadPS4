@@ -318,7 +318,8 @@ static Common::SlotVector<OrbisSem> orbis_sems;
 
 s32 PS4_SYSV_ABI sceKernelCreateSema(OrbisKernelSema* sem, const char* pName, u32 attr,
                                      s32 initCount, s32 maxCount, const void* pOptParam) {
-    if (!pName || attr > 2 || initCount < 0 || maxCount <= 0 || initCount > maxCount) {
+    if (sem == nullptr || !pName || attr > 2 || initCount < 0 || maxCount <= 0 ||
+        initCount > maxCount) {
         LOG_ERROR(Lib_Kernel, "Semaphore creation parameters are invalid!");
         return ORBIS_KERNEL_ERROR_EINVAL;
     }
