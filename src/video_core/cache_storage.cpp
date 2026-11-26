@@ -126,7 +126,10 @@ void DataBase::Close() {
     }
 
     io_worker.request_stop();
-    io_worker.join();
+    // A fatal assertion inside the cache worker calls shutdown from the worker itself.
+    if (io_worker.joinable() && io_worker.get_id() != std::this_thread::get_id()) {
+        io_worker.join();
+    }
 
     if (EmulatorSettings.IsPipelineCacheArchived()) {
         mz_zip_writer_finalize_archive(&zip_ar);
