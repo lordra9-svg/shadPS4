@@ -39,14 +39,22 @@ s32 PS4_SYSV_ABI sceAvPlayerClose(AvPlayerHandle handle) {
     if (handle == nullptr) {
         return ORBIS_AVPLAYER_ERROR_INVALID_PARAMS;
     }
-    if (handle->BeginClosing()) {
-        if (handle->IsDispatchingEvent()) {
-            // The game is closing the player from inside an event callback. Destroying the
-            // state now would pull it out from under the running dispatch stack.
+    if (handle->IsInGuestCallback()) {
+        // A file or memory replacement callback is running. Its caller's stack still uses the
+        // player and cannot be joined, so refuse rather than destroy it underneath them.
+        LOG_ERROR(Lib_AvPlayer, "Cannot close the player from a replacement callback");
+        return ORBIS_AVPLAYER_ERROR_OPERATION_FAILED;
+    }
+    if (handle->IsDispatchingEvent()) {
+        // Closing from an event callback: defer destruction until the dispatch unwinds and the
+        // controller thread has been joined.
+        if (handle->BeginClosing()) {
             handle->RequestDeferredClose();
-        } else {
-            delete handle;
         }
+        return ORBIS_OK;
+    }
+    if (handle->BeginClosing()) {
+        delete handle;
     }
     return ORBIS_OK;
 }

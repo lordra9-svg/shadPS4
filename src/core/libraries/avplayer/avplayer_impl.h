@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/libraries/avplayer/avplayer.h"
+#include "core/libraries/avplayer/avplayer_callback_tracker.h"
 #include "core/libraries/avplayer/avplayer_state.h"
 
 #include <memory>
@@ -36,6 +37,8 @@ public:
 
     bool BeginClosing();
     bool IsDispatchingEvent() const;
+    /// True when any thread is inside one of the game-provided replacement callbacks.
+    bool IsInGuestCallback() const;
     /// Destroys the player from a helper thread once the in-flight event callback returns and
     /// the controller thread has been joined.
     void RequestDeferredClose();
@@ -60,6 +63,7 @@ private:
     std::mutex m_file_io_mutex{};
 
     std::unique_ptr<AvPlayerState> m_state{};
+    GuestCallbackTracker m_guest_callbacks{};
 };
 
 } // namespace Libraries::AvPlayer
