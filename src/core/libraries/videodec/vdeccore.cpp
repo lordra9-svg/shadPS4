@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "vdeccore.h"
+#include "vdeccore_output_buffer.h"
 
 #include <condition_variable>
 #include <deque>
@@ -14,6 +15,7 @@
 #include "common/logging/log.h"
 #include "core/libraries/kernel/orbis_error.h"
 #include "core/libraries/libs.h"
+#include "core/memory.h"
 #include "video_utils.h"
 #include "videodec_error.h"
 
@@ -256,19 +258,37 @@ static void DecoderWorkerLoop(std::stop_token stop_token, VdecCoreDecoder* dec) 
 
 static AVFrame* ConvertNV12Frame(VdecCoreDecoder* dec, AVFrame& frame) {
     AVFrame* nv12_frame = av_frame_alloc();
+    if (!nv12_frame) {
+        LOG_ERROR(Lib_Videodec, "VdecCore: failed to allocate NV12 frame");
+        return nullptr;
+    }
     nv12_frame->format = AV_PIX_FMT_NV12;
     nv12_frame->width = frame.width;
     nv12_frame->height = frame.height;
     nv12_frame->pts = frame.pts;
     nv12_frame->pkt_dts = frame.pkt_dts;
     nv12_frame->opaque = frame.opaque;
-    av_frame_get_buffer(nv12_frame, 0);
+    if (av_frame_get_buffer(nv12_frame, 0) < 0) {
+        LOG_ERROR(Lib_Videodec, "VdecCore: failed to allocate NV12 frame buffer");
+        av_frame_free(&nv12_frame);
+        return nullptr;
+    }
 
     dec->sws_context = sws_getCachedContext(
         dec->sws_context, frame.width, frame.height, static_cast<AVPixelFormat>(frame.format),
         frame.width, frame.height, AV_PIX_FMT_NV12, SWS_BILINEAR, nullptr, nullptr, nullptr);
-    sws_scale(dec->sws_context, frame.data, frame.linesize, 0, frame.height, nv12_frame->data,
-              nv12_frame->linesize);
+    if (!dec->sws_context) {
+        LOG_ERROR(Lib_Videodec, "VdecCore: failed to create sws context for {}x{}", frame.width,
+                  frame.height);
+        av_frame_free(&nv12_frame);
+        return nullptr;
+    }
+    if (sws_scale(dec->sws_context, frame.data, frame.linesize, 0, frame.height, nv12_frame->data,
+                  nv12_frame->linesize) < 0) {
+        LOG_ERROR(Lib_Videodec, "VdecCore: failed to convert frame to NV12");
+        av_frame_free(&nv12_frame);
+        return nullptr;
+    }
     return nv12_frame;
 }
 
@@ -549,6 +569,9 @@ static s32 PS4_SYSV_ABI sceVdecCoreGetDecodeOutput(VdecCoreDecoder* decoder,
     if (frame->format != AV_PIX_FMT_NV12) {
         AVFrame* converted = ConvertNV12Frame(decoder, *frame);
         av_frame_free(&frame);
+        if (!converted) {
+            return ORBIS_VDEC_CORE_ERROR_FATAL;
+        }
         frame = converted;
     }
 
@@ -563,6 +586,22 @@ static s32 PS4_SYSV_ABI sceVdecCoreGetDecodeOutput(VdecCoreDecoder* decoder,
     const u64 allocated_fb_size = (frame_buf && frame_buf->frame_buffer_size > 0)
                                       ? frame_buf->frame_buffer_size
                                       : decoder->frame_buffer_size;
+
+    if (frame_buf && frame_buf->frame_buffer) {
+        const u64 required_size = static_cast<u64>(fb_size) + sizeof(SceVdecCoreHwPictureInfo);
+        const s32 validation = ValidateOutputFrameBuffer(
+            frame_buf->frame_buffer, frame_buf->frame_buffer_size,
+            Core::Memory::Instance()->IsValidMapping(
+                reinterpret_cast<VAddr>(frame_buf->frame_buffer), frame_buf->frame_buffer_size),
+            required_size);
+        if (validation != 0) {
+            LOG_ERROR(Lib_Videodec,
+                      "VdecCore: output buffer of {} bytes is invalid for a {} byte frame + info",
+                      frame_buf->frame_buffer_size, fb_size);
+            av_frame_free(&frame);
+            return validation;
+        }
+    }
 
     void* dest_buf = nullptr;
     if (frame_buf && frame_buf->frame_buffer) {
