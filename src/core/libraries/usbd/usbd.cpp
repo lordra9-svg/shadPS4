@@ -254,7 +254,7 @@ s32 PS4_SYSV_ABI sceUsbdSubmitTransfer(SceUsbdTransfer* transfer) {
 s32 PS4_SYSV_ABI sceUsbdCancelTransfer(SceUsbdTransfer* transfer) {
     LOG_DEBUG(Lib_Usbd, "called");
 
-    return libusb_to_orbis_error(libusb_cancel_transfer(transfer));
+    return libusb_to_orbis_error(usb_backend->CancelTransfer(transfer));
 }
 
 void PS4_SYSV_ABI sceUsbdFreeTransfer(SceUsbdTransfer* transfer) {

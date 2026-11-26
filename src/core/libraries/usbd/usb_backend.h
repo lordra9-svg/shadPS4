@@ -101,6 +101,7 @@ public:
     virtual s32 ControlTransfer(libusb_device_handle* dev_handle, u8 bmRequestType, u8 bRequest,
                                 u16 wValue, u16 wIndex, u8* data, u16 wLength, u32 timeout) = 0;
     virtual s32 SubmitTransfer(libusb_transfer* transfer) = 0;
+    virtual s32 CancelTransfer(libusb_transfer* transfer) = 0;
 
     virtual s32 TryLockEvents() = 0;
     virtual void LockEvents() = 0;
@@ -219,6 +220,9 @@ public:
     }
     s32 SubmitTransfer(libusb_transfer* transfer) override {
         return libusb_submit_transfer(transfer);
+    }
+    s32 CancelTransfer(libusb_transfer* transfer) override {
+        return libusb_cancel_transfer(transfer);
     }
 
     s32 TryLockEvents() override {
@@ -433,6 +437,26 @@ public:
 
         // otherwise we need to be inserted at the end
         flight_list.push_back(transfer);
+        return LIBUSB_SUCCESS;
+    }
+    s32 CancelTransfer(libusb_transfer* transfer) override {
+        if (!transfer) {
+            return LIBUSB_ERROR_INVALID_PARAM;
+        }
+
+        const auto size = flight_list.size();
+        flight_list.remove(transfer);
+        if (flight_list.size() == size) {
+            return LIBUSB_ERROR_NOT_FOUND;
+        }
+
+        transfer->status = LIBUSB_TRANSFER_CANCELLED;
+        if (transfer->callback) {
+            transfer->callback(transfer);
+        }
+        if (transfer->flags & LIBUSB_TRANSFER_FREE_TRANSFER) {
+            libusb_free_transfer(transfer);
+        }
         return LIBUSB_SUCCESS;
     }
 
