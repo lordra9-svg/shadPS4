@@ -329,7 +329,7 @@ s32 PS4_SYSV_ABI sceUsbdBulkTransfer(SceUsbdDeviceHandle* dev_handle, u8 endpoin
     LOG_DEBUG(Lib_Usbd, "called");
 
     return libusb_to_orbis_error(
-        libusb_bulk_transfer(dev_handle, endpoint, data, length, actual_length, timeout));
+        usb_backend->BulkTransfer(dev_handle, endpoint, data, length, actual_length, timeout));
 }
 
 s32 PS4_SYSV_ABI sceUsbdInterruptTransfer(SceUsbdDeviceHandle* dev_handle, u8 endpoint, u8* data,
@@ -337,7 +337,7 @@ s32 PS4_SYSV_ABI sceUsbdInterruptTransfer(SceUsbdDeviceHandle* dev_handle, u8 en
     LOG_DEBUG(Lib_Usbd, "called");
 
     return libusb_to_orbis_error(
-        libusb_interrupt_transfer(dev_handle, endpoint, data, length, actual_length, timeout));
+        usb_backend->InterruptTransfer(dev_handle, endpoint, data, length, actual_length, timeout));
 }
 
 s32 PS4_SYSV_ABI sceUsbdGetDescriptor(SceUsbdDeviceHandle* dev_handle, u8 descType, u8 descIndex,

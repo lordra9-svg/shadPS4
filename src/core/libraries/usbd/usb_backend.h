@@ -100,6 +100,10 @@ public:
 
     virtual s32 ControlTransfer(libusb_device_handle* dev_handle, u8 bmRequestType, u8 bRequest,
                                 u16 wValue, u16 wIndex, u8* data, u16 wLength, u32 timeout) = 0;
+    virtual s32 BulkTransfer(libusb_device_handle* dev_handle, u8 endpoint, u8* data, s32 length,
+                             s32* actual_length, u32 timeout) = 0;
+    virtual s32 InterruptTransfer(libusb_device_handle* dev_handle, u8 endpoint, u8* data,
+                                  s32 length, s32* actual_length, u32 timeout) = 0;
     virtual s32 SubmitTransfer(libusb_transfer* transfer) = 0;
 
     virtual s32 TryLockEvents() = 0;
@@ -216,6 +220,15 @@ public:
                         u16 wIndex, u8* data, u16 wLength, u32 timeout) override {
         return libusb_control_transfer(dev_handle, bmRequestType, bRequest, wValue, wIndex, data,
                                        wLength, timeout);
+    }
+    s32 BulkTransfer(libusb_device_handle* dev_handle, u8 endpoint, u8* data, s32 length,
+                     s32* actual_length, u32 timeout) override {
+        return libusb_bulk_transfer(dev_handle, endpoint, data, length, actual_length, timeout);
+    }
+    s32 InterruptTransfer(libusb_device_handle* dev_handle, u8 endpoint, u8* data, s32 length,
+                          s32* actual_length, u32 timeout) override {
+        return libusb_interrupt_transfer(dev_handle, endpoint, data, length, actual_length,
+                                         timeout);
     }
     s32 SubmitTransfer(libusb_transfer* transfer) override {
         return libusb_submit_transfer(transfer);
@@ -407,6 +420,52 @@ public:
                         u16 wIndex, u8* data, u16 wLength, u32 timeout) override {
         LOG_WARNING(Lib_Usbd, "Backend has not handled control transfers");
         return LIBUSB_ERROR_PIPE;
+    }
+    s32 BulkTransfer(libusb_device_handle* dev_handle, u8 endpoint, u8* data, s32 length,
+                     s32* actual_length, u32 timeout) override {
+        // Emulated devices only expose interrupt endpoints.
+        return LIBUSB_ERROR_NOT_SUPPORTED;
+    }
+    s32 InterruptTransfer(libusb_device_handle* dev_handle, u8 endpoint, u8* data, s32 length,
+                          s32* actual_length, u32 timeout) override {
+        if (!dev_handle || !data || length < 0) {
+            return LIBUSB_ERROR_INVALID_PARAM;
+        }
+
+        libusb_transfer* transfer = libusb_alloc_transfer(0);
+        if (!transfer) {
+            return LIBUSB_ERROR_NO_MEM;
+        }
+        libusb_fill_interrupt_transfer(transfer, dev_handle, endpoint, data, length, nullptr,
+                                       nullptr, timeout);
+
+        const s32 submit_result = SubmitTransfer(transfer);
+        if (submit_result < LIBUSB_SUCCESS) {
+            libusb_free_transfer(transfer);
+            return submit_result;
+        }
+
+        // Handle events until this transfer has been completed by the backend.
+        bool queued = true;
+        while (queued) {
+            queued = false;
+            for (const auto* item : flight_list) {
+                if (item == transfer) {
+                    queued = true;
+                    break;
+                }
+            }
+            if (queued) {
+                HandleEvents();
+            }
+        }
+
+        if (actual_length) {
+            *actual_length = transfer->actual_length;
+        }
+        const bool completed = transfer->status == LIBUSB_TRANSFER_COMPLETED;
+        libusb_free_transfer(transfer);
+        return completed ? LIBUSB_SUCCESS : LIBUSB_ERROR_IO;
     }
     s32 SubmitTransfer(libusb_transfer* transfer) override {
         ASSERT(transfer->type == LIBUSB_TRANSFER_TYPE_INTERRUPT);
