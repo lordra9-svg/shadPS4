@@ -5,7 +5,9 @@
 #include "core/libraries/avplayer/avplayer.h"
 #include "core/libraries/avplayer/avplayer_error.h"
 #include "core/libraries/avplayer/avplayer_impl.h"
+#include "core/libraries/avplayer/avplayer_uri_validation.h"
 #include "core/libraries/libs.h"
+#include "core/memory.h"
 
 #include <string_view>
 
@@ -25,7 +27,19 @@ s32 PS4_SYSV_ABI sceAvPlayerAddSourceEx(AvPlayerHandle handle, AvPlayerUriType u
     if (handle == nullptr || uri_type != AvPlayerUriType::Source || source_details == nullptr) {
         return ORBIS_AVPLAYER_ERROR_INVALID_PARAMS;
     }
-    const auto path = std::string_view(source_details->uri.name, source_details->uri.length);
+
+    const auto& uri = source_details->uri;
+    const bool has_valid_range =
+        uri.name != nullptr && uri.length > 0 && uri.length <= MaxUriLength;
+    const bool is_mapped = has_valid_range && Core::Memory::Instance()->IsValidMapping(
+                                                  reinterpret_cast<VAddr>(uri.name), uri.length);
+    if (!IsValidUri(uri.name, uri.length, is_mapped)) {
+        LOG_ERROR(Lib_AvPlayer, "Invalid source URI (name = {}, length = {})",
+                  static_cast<const void*>(uri.name), uri.length);
+        return ORBIS_AVPLAYER_ERROR_INVALID_PARAMS;
+    }
+
+    const auto path = std::string_view(uri.name, uri.length);
     return handle->AddSourceEx(path, source_details->source_type);
 }
 
