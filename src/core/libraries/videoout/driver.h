@@ -7,8 +7,10 @@
 #include "common/polyfill_thread.h"
 #include "core/libraries/videoout/video_out.h"
 
+#include <algorithm>
 #include <condition_variable>
 #include <mutex>
+#include <utility>
 #include <queue>
 
 namespace Vulkan {
@@ -29,6 +31,9 @@ struct VideoOutPort {
     std::vector<Kernel::OrbisKernelEqueue> vblank_events;
     std::mutex vo_mutex;
     std::mutex port_mutex;
+    // Guards flip_events and vblank_events, which are mutated by guest threads and read by the
+    // present thread.
+    mutable std::mutex events_mutex;
     std::condition_variable vo_cv;
     std::condition_variable vblank_cv;
     int flip_rate = 0;
@@ -63,6 +68,49 @@ struct VideoOutPort {
     [[nodiscard]] int NumRegisteredBuffers() const {
         return std::count_if(buffer_slots.cbegin(), buffer_slots.cend(),
                              [](auto& buffer) { return buffer.group_index != -1; });
+    }
+
+    void AddFlipEvent(Kernel::OrbisKernelEqueue eq) {
+        std::scoped_lock lock{events_mutex};
+        flip_events.push_back(eq);
+    }
+
+    void RemoveFlipEvent(Kernel::OrbisKernelEqueue eq) {
+        std::scoped_lock lock{events_mutex};
+        flip_events.erase(std::remove(flip_events.begin(), flip_events.end(), eq),
+                          flip_events.end());
+    }
+
+    [[nodiscard]] std::vector<Kernel::OrbisKernelEqueue> GetFlipEvents() const {
+        std::scoped_lock lock{events_mutex};
+        return flip_events;
+    }
+
+    void AddVblankEvent(Kernel::OrbisKernelEqueue eq) {
+        std::scoped_lock lock{events_mutex};
+        vblank_events.push_back(eq);
+    }
+
+    void RemoveVblankEvent(Kernel::OrbisKernelEqueue eq) {
+        std::scoped_lock lock{events_mutex};
+        vblank_events.erase(std::remove(vblank_events.begin(), vblank_events.end(), eq),
+                            vblank_events.end());
+    }
+
+    [[nodiscard]] std::vector<Kernel::OrbisKernelEqueue> GetVblankEvents() const {
+        std::scoped_lock lock{events_mutex};
+        return vblank_events;
+    }
+
+    /// Remove and return all registered events, used when the port is closed.
+    std::vector<Kernel::OrbisKernelEqueue> TakeFlipEvents() {
+        std::scoped_lock lock{events_mutex};
+        return std::exchange(flip_events, {});
+    }
+
+    std::vector<Kernel::OrbisKernelEqueue> TakeVblankEvents() {
+        std::scoped_lock lock{events_mutex};
+        return std::exchange(vblank_events, {});
     }
 };
 

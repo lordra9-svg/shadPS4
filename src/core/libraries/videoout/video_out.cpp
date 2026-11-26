@@ -62,7 +62,7 @@ s32 PS4_SYSV_ABI sceVideoOutAddFlipEvent(Kernel::OrbisKernelEqueue eq, s32 handl
     event.data = port;
     equeue->AddEvent(event);
 
-    port->flip_events.push_back(eq);
+    port->AddFlipEvent(eq);
     return ORBIS_OK;
 }
 
@@ -77,7 +77,7 @@ s32 PS4_SYSV_ABI sceVideoOutDeleteFlipEvent(Kernel::OrbisKernelEqueue eq, s32 ha
         return ORBIS_VIDEO_OUT_ERROR_INVALID_EVENT_QUEUE;
     }
     equeue->RemoveEvent(handle, Kernel::OrbisKernelEvent::Filter::VideoOut);
-    port->flip_events.erase(find(port->flip_events.begin(), port->flip_events.end(), eq));
+    port->RemoveFlipEvent(eq);
     return ORBIS_OK;
 }
 
@@ -104,7 +104,7 @@ s32 PS4_SYSV_ABI sceVideoOutAddVblankEvent(Kernel::OrbisKernelEqueue eq, s32 han
     event.data = port;
     equeue->AddEvent(event);
 
-    port->vblank_events.push_back(eq);
+    port->AddVblankEvent(eq);
     return ORBIS_OK;
 }
 
@@ -119,7 +119,7 @@ s32 PS4_SYSV_ABI sceVideoOutDeleteVblankEvent(Kernel::OrbisKernelEqueue eq, s32 
         return ORBIS_VIDEO_OUT_ERROR_INVALID_EVENT_QUEUE;
     }
     equeue->RemoveEvent(handle, Kernel::OrbisKernelEvent::Filter::VideoOut);
-    port->vblank_events.erase(find(port->vblank_events.begin(), port->vblank_events.end(), eq));
+    port->RemoveVblankEvent(eq);
     return ORBIS_OK;
 }
 
