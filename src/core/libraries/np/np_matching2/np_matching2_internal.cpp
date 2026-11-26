@@ -18,6 +18,8 @@
 #include "core/libraries/np/np_matching2/np_matching2_internal.h"
 #include "shadnet.pb.h"
 
+#include "core/libraries/np/np_dispatch_lifecycle.h"
+
 namespace Libraries::Np::NpMatching2 {
 
 namespace {
@@ -1779,11 +1781,18 @@ PS4_SYSV_ABI void* EventDispatcherThreadMain(void*) {
     return nullptr;
 }
 
+static Libraries::Np::DispatchLifecycle g_matching2_dispatch_lifecycle;
+
 void InitEventDispatcher() {
     auto& state = NpHandler::GetInstance().GetMatching2State();
-    if (state.dispatch_running.exchange(true)) {
+    // Held across creation so a concurrent TermEventDispatcher cannot join a half-started worker.
+    std::lock_guard lifecycle{g_matching2_dispatch_lifecycle.Mutex()};
+    if (!g_matching2_dispatch_lifecycle.IsStopped()) {
         return;
     }
+    g_matching2_dispatch_lifecycle.MarkRunning();
+    state.dispatch_running.store(true);
+
     const s32 rc = NpCommon::sceNpCreateThread(
         &state.dispatch_thread, EventDispatcherThreadMain, nullptr,
         Libraries::Kernel::ORBIS_KERNEL_PRIO_FIFO_DEFAULT,
@@ -1792,6 +1801,7 @@ void InitEventDispatcher() {
         LOG_ERROR(Lib_NpMatching2, "failed to create event dispatcher thread: {:#x}", rc);
         state.dispatch_running.store(false);
         state.dispatch_thread = nullptr;
+        g_matching2_dispatch_lifecycle.MarkStopped();
         return;
     }
     LOG_INFO(Lib_NpMatching2, "event dispatcher thread created");
@@ -1799,16 +1809,24 @@ void InitEventDispatcher() {
 
 void TermEventDispatcher() {
     auto& state = NpHandler::GetInstance().GetMatching2State();
-    if (!state.dispatch_running.exchange(false)) {
+    // Held across the join so a concurrent Init waits instead of starting over a live worker.
+    std::lock_guard lifecycle{g_matching2_dispatch_lifecycle.Mutex()};
+    if (!g_matching2_dispatch_lifecycle.IsRunning()) {
         return;
     }
+    g_matching2_dispatch_lifecycle.MarkStopping();
+    state.dispatch_running.store(false);
+
     state.queue_cv.notify_all();
     if (state.dispatch_thread) {
         NpCommon::sceNpJoinThread(state.dispatch_thread, nullptr);
         state.dispatch_thread = nullptr;
     }
-    std::lock_guard lock(state.queue_mutex);
-    state.pending_events.clear();
+    {
+        std::lock_guard lock(state.queue_mutex);
+        state.pending_events.clear();
+    }
+    g_matching2_dispatch_lifecycle.MarkStopped();
 }
 
 void ScheduleEvent(PendingEvent ev) {
