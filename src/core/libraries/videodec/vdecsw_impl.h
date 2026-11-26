@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "vdecsw.h"
+#include "vdecsw_sws.h"
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -67,6 +68,7 @@ private:
 private:
     AVCodecContext* m_codec_context = nullptr;
     SwsContext* m_sws_context = nullptr;
+    SwsCacheKey m_sws_key{};
     bool m_is_avc = false;
 
     std::mutex m_mutex;

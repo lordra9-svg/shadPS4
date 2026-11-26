@@ -348,7 +348,11 @@ u32 VdecDecoder::ReceiveFrames() {
         AVFrame* queued = nullptr;
         if (frame->format != AV_PIX_FMT_NV12) {
             AVFrame* nv12_frame = ConvertNV12Frame(*frame);
-            ASSERT(nv12_frame);
+            if (!nv12_frame) {
+                LOG_ERROR(Lib_Vdecsw, "Failed to convert decoded frame to NV12");
+                av_frame_unref(frame);
+                continue;
+            }
             queued = nv12_frame;
         } else {
             queued = av_frame_clone(frame);
@@ -444,6 +448,10 @@ void VdecDecoder::ClearFrameQueue() {
 
 AVFrame* VdecDecoder::ConvertNV12Frame(AVFrame& frame) {
     AVFrame* nv12_frame = av_frame_alloc();
+    if (!nv12_frame) {
+        LOG_ERROR(Lib_Vdecsw, "Failed to allocate NV12 frame");
+        return nullptr;
+    }
     nv12_frame->pts = frame.pts;
     nv12_frame->pkt_dts = frame.pkt_dts < 0 ? 0 : frame.pkt_dts;
     nv12_frame->format = AV_PIX_FMT_NV12;
@@ -456,12 +464,25 @@ AVFrame* VdecDecoder::ConvertNV12Frame(AVFrame& frame) {
     nv12_frame->crop_right = frame.crop_right;
     nv12_frame->opaque = frame.opaque;
 
-    av_frame_get_buffer(nv12_frame, 0);
+    if (av_frame_get_buffer(nv12_frame, 0) < 0) {
+        LOG_ERROR(Lib_Vdecsw, "Failed to allocate NV12 frame buffer");
+        av_frame_free(&nv12_frame);
+        return nullptr;
+    }
 
-    if (m_sws_context == nullptr) {
+    if (m_sws_context == nullptr ||
+        !SwsContextMatches(m_sws_key, frame.width, frame.height, frame.format)) {
+        sws_freeContext(m_sws_context);
         m_sws_context = sws_getContext(frame.width, frame.height, AVPixelFormat(frame.format),
                                        nv12_frame->width, nv12_frame->height, AV_PIX_FMT_NV12,
                                        SWS_FAST_BILINEAR, nullptr, nullptr, nullptr);
+        if (!m_sws_context) {
+            LOG_ERROR(Lib_Vdecsw, "Failed to create sws context for {}x{} format {}", frame.width,
+                      frame.height, frame.format);
+            av_frame_free(&nv12_frame);
+            return nullptr;
+        }
+        m_sws_key = {frame.width, frame.height, frame.format};
     }
 
     const auto res = sws_scale(m_sws_context, frame.data, frame.linesize, 0, frame.height,
