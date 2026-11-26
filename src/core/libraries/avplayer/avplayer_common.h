@@ -56,7 +56,8 @@ struct AvPlayerEvent {
 template <class T>
 class AvPlayerQueue {
 public:
-    size_t Size() {
+    size_t Size() const {
+        std::lock_guard guard(m_mutex);
         return m_queue.size();
     }
 
@@ -65,15 +66,25 @@ public:
         m_queue.emplace(std::forward<T>(value));
     }
 
-    T& Front() {
-        return m_queue.front();
-    }
-
+    /// Atomically move the front element out. Returns nullopt when the queue is empty.
     std::optional<T> Pop() {
-        if (Size() == 0) {
+        std::lock_guard guard(m_mutex);
+        if (m_queue.empty()) {
             return std::nullopt;
         }
+        auto result = std::move(m_queue.front());
+        m_queue.pop();
+        return result;
+    }
+
+    /// Atomically move the front element out when it satisfies `pred`. The predicate runs while
+    /// the queue is locked and must not call back into this queue.
+    template <class Pred>
+    std::optional<T> PopIf(Pred pred) {
         std::lock_guard guard(m_mutex);
+        if (m_queue.empty() || !pred(m_queue.front())) {
+            return std::nullopt;
+        }
         auto result = std::move(m_queue.front());
         m_queue.pop();
         return result;
@@ -85,7 +96,7 @@ public:
     }
 
 private:
-    std::mutex m_mutex{};
+    mutable std::mutex m_mutex{};
     std::queue<T> m_queue{};
 };
 

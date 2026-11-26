@@ -388,16 +388,13 @@ bool AvPlayerSource::GetVideoData(AvPlayerFrameInfoEx& video_info) {
         return false;
     }
 
-    if (m_video_frames.Size() == 0) {
-        return false;
-    }
-
     const auto current_time = CurrentTime();
-    const auto& new_frame = m_video_frames.Front();
-    if (m_state.GetSyncMode() == AvPlayerAvSyncMode::Default) {
-        if (new_frame.info.timestamp > current_time) {
-            return false;
-        }
+    const bool wait_for_timestamp = m_state.GetSyncMode() == AvPlayerAvSyncMode::Default;
+    auto frame = m_video_frames.PopIf([&](const Frame& candidate) {
+        return !wait_for_timestamp || candidate.info.timestamp <= current_time;
+    });
+    if (!frame.has_value()) {
+        return false;
     }
 
     if (m_current_video_frame.has_value()) {
@@ -406,7 +403,6 @@ bool AvPlayerSource::GetVideoData(AvPlayerFrameInfoEx& video_info) {
         m_video_buffers_cv.Notify();
     }
 
-    auto frame = m_video_frames.Pop();
     video_info = frame->info;
 
     m_current_video_frame = std::move(frame);
@@ -418,7 +414,8 @@ bool AvPlayerSource::GetAudioData(AvPlayerFrameInfo& audio_info) {
         return false;
     }
 
-    if (m_audio_frames.Size() == 0) {
+    auto frame = m_audio_frames.Pop();
+    if (!frame.has_value()) {
         return false;
     }
 
@@ -428,7 +425,6 @@ bool AvPlayerSource::GetAudioData(AvPlayerFrameInfo& audio_info) {
         m_audio_buffers_cv.Notify();
     }
 
-    auto frame = m_audio_frames.Pop();
     m_last_audio_ts = frame->info.timestamp;
     m_last_data_time = std::chrono::high_resolution_clock::now();
     m_pause_duration = std::chrono::high_resolution_clock::duration(0);
