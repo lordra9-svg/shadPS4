@@ -4,6 +4,7 @@
 #pragma once
 
 #include <functional>
+#include "common/logging/log.h"
 #include "common/polyfill_thread.h"
 #include "core/libraries/kernel/threads/pthread.h"
 #include "core/tls.h"
@@ -70,11 +71,27 @@ public:
     }
 
     void Run(std::function<void(std::stop_token)>&& func) {
+        // Reusing the object while a thread is still running would overwrite this->func under
+        // RunWrapper's call and lose the only handle to the old thread.
+        if (Joinable()) {
+            Stop();
+            if (Joinable()) {
+                LOG_ERROR(Kernel_Pthread,
+                          "Cannot start a new thread while the previous one is still running");
+                return;
+            }
+        }
+
         this->func = std::move(func);
         PthreadAttrT attr{};
         posix_pthread_attr_init(&attr);
-        posix_pthread_create(&thread, &attr, HOST_CALL(RunWrapper), this);
+        const int result = posix_pthread_create(&thread, &attr, HOST_CALL(RunWrapper), this);
         posix_pthread_attr_destroy(&attr);
+        if (result != 0) {
+            thread = nullptr;
+            this->func = nullptr;
+            LOG_ERROR(Kernel_Pthread, "Failed to create thread: {}", result);
+        }
     }
 
     void Join() {
