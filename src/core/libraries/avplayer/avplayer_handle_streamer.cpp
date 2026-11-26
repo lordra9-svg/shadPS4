@@ -31,10 +31,17 @@ bool AvPlayerHandleStreamer::Init(std::string_view /*path*/) {
     m_file_size = m_handle->Size();
 
     const auto avio_buffer = reinterpret_cast<u8*>(av_malloc(AVPLAYER_AVIO_BUFFER_SIZE));
+    if (avio_buffer == nullptr) {
+        return false;
+    }
     m_avio_context = avio_alloc_context(avio_buffer, AVPLAYER_AVIO_BUFFER_SIZE,
                                         /*write_flag=*/0, this, &AvPlayerHandleStreamer::ReadPacket,
                                         /*write_packet=*/nullptr, &AvPlayerHandleStreamer::Seek);
-    return m_avio_context != nullptr;
+    if (m_avio_context == nullptr) {
+        av_free(avio_buffer);
+        return false;
+    }
+    return true;
 }
 
 void AvPlayerHandleStreamer::Reset() {

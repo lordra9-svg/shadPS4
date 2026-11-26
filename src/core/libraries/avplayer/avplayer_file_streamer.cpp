@@ -49,19 +49,35 @@ void AvPlayerFileStreamer::Reset() {
 
 s32 AvPlayerFileStreamer::ReadPacket(void* opaque, u8* buffer, s32 size) {
     const auto self = reinterpret_cast<AvPlayerFileStreamer*>(opaque);
+    if (size < 0) {
+        return AVERROR(EINVAL);
+    }
+    if (size == 0) {
+        return 0;
+    }
     if (self->m_position >= self->m_file_size) {
         return AVERROR_EOF;
     }
-    if (self->m_position + size > self->m_file_size) {
-        size = self->m_file_size - self->m_position;
+    const u64 remaining = self->m_file_size - self->m_position;
+    if (static_cast<u64>(size) > remaining) {
+        size = static_cast<s32>(remaining);
     }
     const auto read_offset = self->m_file_replacement.read_offset;
     const auto ptr = self->m_file_replacement.object_ptr;
-    const auto bytes_read = read_offset(ptr, buffer, self->m_position, size);
-    if (bytes_read == 0 && size != 0) {
+    const s32 bytes_read = read_offset(ptr, buffer, self->m_position, static_cast<u32>(size));
+    if (bytes_read < 0) {
+        // Guest-reported error: leave the position untouched instead of underflowing it.
+        return bytes_read;
+    }
+    if (bytes_read == 0) {
         return AVERROR_EOF;
     }
-    self->m_position += bytes_read;
+    if (bytes_read > size) {
+        // The callback claims more bytes than it was asked for. Advancing would desync the
+        // stream and let FFmpeg read past the end of the supplied buffer.
+        return AVERROR(EIO);
+    }
+    self->m_position += static_cast<u64>(bytes_read);
     return bytes_read;
 }
 
