@@ -84,6 +84,7 @@ public:
     virtual u8 GetBusNumber(libusb_device* dev) = 0;
     virtual u8 GetDeviceAddress(libusb_device* dev) = 0;
     virtual s32 GetMaxPacketSize(libusb_device* dev, u8 endpoint) = 0;
+    virtual s32 GetMaxIsoPacketSize(libusb_device* dev, u8 endpoint) = 0;
 
     virtual s32 OpenDevice(libusb_device* dev, libusb_device_handle** dev_handle) = 0;
     virtual void CloseDevice(libusb_device_handle* dev_handle) = 0;
@@ -163,6 +164,9 @@ public:
     }
     s32 GetMaxPacketSize(libusb_device* dev, u8 endpoint) override {
         return libusb_get_max_packet_size(dev, endpoint);
+    }
+    s32 GetMaxIsoPacketSize(libusb_device* dev, u8 endpoint) override {
+        return libusb_get_max_iso_packet_size(dev, endpoint);
     }
 
     s32 OpenDevice(libusb_device* dev, libusb_device_handle** dev_handle) override {
@@ -347,6 +351,20 @@ public:
             return LIBUSB_ERROR_OTHER;
         }
         return desc->bMaxPacketSize0;
+    }
+    s32 GetMaxIsoPacketSize(libusb_device* dev, u8 endpoint) override {
+        const auto endpoint_descs = FillEndpointDescriptorPair();
+        const auto interface_desc = FillInterfaceDescriptor(endpoint_descs);
+        if (!endpoint_descs || !interface_desc) {
+            return LIBUSB_ERROR_NOT_FOUND;
+        }
+
+        for (u8 i = 0; i < interface_desc->bNumEndpoints; ++i) {
+            if (endpoint_descs[i].bEndpointAddress == endpoint) {
+                return endpoint_descs[i].wMaxPacketSize;
+            }
+        }
+        return LIBUSB_ERROR_NOT_FOUND;
     }
 
     s32 OpenDevice(libusb_device* dev, libusb_device_handle** dev_handle) override {

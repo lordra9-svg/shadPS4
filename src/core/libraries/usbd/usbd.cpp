@@ -133,7 +133,7 @@ s32 PS4_SYSV_ABI sceUsbdGetMaxPacketSize(SceUsbdDevice* device, u8 endpoint) {
 s32 PS4_SYSV_ABI sceUsbdGetMaxIsoPacketSize(SceUsbdDevice* device, u8 endpoint) {
     LOG_DEBUG(Lib_Usbd, "called");
 
-    return libusb_to_orbis_error(libusb_get_max_iso_packet_size(device, endpoint));
+    return libusb_to_orbis_error(usb_backend->GetMaxIsoPacketSize(device, endpoint));
 }
 
 s32 PS4_SYSV_ABI sceUsbdOpen(SceUsbdDevice* device, SceUsbdDeviceHandle** dev_handle) {
