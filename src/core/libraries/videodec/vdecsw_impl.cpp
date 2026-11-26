@@ -7,6 +7,7 @@
 #include "common/assert.h"
 #include "common/logging/log.h"
 #include "common/thread.h"
+#include "core/memory.h"
 #include "vdecsw_frame_buffer.h"
 #include "video_utils.h"
 #include "videodec_error.h"
@@ -52,6 +53,11 @@ s32 VdecDecoder::SetDecodeInput(const OrbisVdecswInputData& input_data) {
     if (input_data.au_size == 0) {
         LOG_ERROR(Lib_Vdecsw, "ORBIS_VDECSW_ERROR_ACCESS_UNIT_SIZE");
         return ORBIS_VDECSW_ERROR_ACCESS_UNIT_SIZE;
+    }
+    if (!Core::Memory::Instance()->IsValidMapping(reinterpret_cast<VAddr>(input_data.au_data),
+                                                  input_data.au_size)) {
+        LOG_ERROR(Lib_Vdecsw, "ORBIS_VDECSW_ERROR_ACCESS_UNIT_POINTER");
+        return ORBIS_VDECSW_ERROR_ACCESS_UNIT_POINTER;
     }
 
     // The access unit data is copied because the game is allowed to reuse the
@@ -122,6 +128,11 @@ s32 VdecDecoder::SetDecodeOutput(const OrbisVdecswFrameBuffer& frame_buffer) {
     if (frame_buffer.frame_buffer_size == 0) {
         LOG_ERROR(Lib_Vdecsw, "ORBIS_VDECSW_ERROR_FRAME_BUFFER_SIZE");
         return ORBIS_VDECSW_ERROR_FRAME_BUFFER_SIZE;
+    }
+    if (!Core::Memory::Instance()->IsValidMapping(
+            reinterpret_cast<VAddr>(frame_buffer.frame_buffer), frame_buffer.frame_buffer_size)) {
+        LOG_ERROR(Lib_Vdecsw, "ORBIS_VDECSW_ERROR_FRAME_BUFFER_POINTER");
+        return ORBIS_VDECSW_ERROR_FRAME_BUFFER_POINTER;
     }
 
     std::scoped_lock lock{m_mutex};
