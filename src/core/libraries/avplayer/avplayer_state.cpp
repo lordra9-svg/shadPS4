@@ -442,9 +442,14 @@ void AvPlayerState::ProcessEvent() {
         return;
     }
 
-    std::lock_guard guard(m_event_handler_mutex);
-
-    auto event = m_event_queue.Pop();
+    // Serialize event removal, but do not hold the lock while dispatching: EmitEvent calls the
+    // game's callback synchronously, and that callback may re-enter the player. Holding a
+    // non-recursive mutex across the callback turns any re-entry into a self-deadlock.
+    std::optional<AvPlayerEvent> event;
+    {
+        std::lock_guard guard(m_event_handler_mutex);
+        event = m_event_queue.Pop();
+    }
     if (!event.has_value()) {
         return;
     }
