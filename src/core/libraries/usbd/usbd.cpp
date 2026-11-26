@@ -345,7 +345,7 @@ s32 PS4_SYSV_ABI sceUsbdGetDescriptor(SceUsbdDeviceHandle* dev_handle, u8 descTy
     LOG_DEBUG(Lib_Usbd, "called");
 
     return libusb_to_orbis_error(
-        libusb_get_descriptor(dev_handle, descType, descIndex, data, length));
+        usb_backend->GetDescriptor(dev_handle, descType, descIndex, data, length));
 }
 
 s32 PS4_SYSV_ABI sceUsbdGetStringDescriptor(SceUsbdDeviceHandle* dev_handle, u8 desc_index,
@@ -353,7 +353,7 @@ s32 PS4_SYSV_ABI sceUsbdGetStringDescriptor(SceUsbdDeviceHandle* dev_handle, u8 
     LOG_DEBUG(Lib_Usbd, "called");
 
     return libusb_to_orbis_error(
-        libusb_get_string_descriptor(dev_handle, desc_index, langid, data, length));
+        usb_backend->GetStringDescriptor(dev_handle, desc_index, langid, data, length));
 }
 
 s32 PS4_SYSV_ABI sceUsbdGetStringDescriptorAscii(SceUsbdDeviceHandle* dev_handle, u8 desc_index,
@@ -361,7 +361,7 @@ s32 PS4_SYSV_ABI sceUsbdGetStringDescriptorAscii(SceUsbdDeviceHandle* dev_handle
     LOG_DEBUG(Lib_Usbd, "called");
 
     return libusb_to_orbis_error(
-        libusb_get_string_descriptor_ascii(dev_handle, desc_index, data, length));
+        usb_backend->GetStringDescriptorAscii(dev_handle, desc_index, data, length));
 }
 
 s32 PS4_SYSV_ABI sceUsbdTryLockEvents() {

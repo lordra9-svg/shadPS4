@@ -100,6 +100,12 @@ public:
 
     virtual s32 ControlTransfer(libusb_device_handle* dev_handle, u8 bmRequestType, u8 bRequest,
                                 u16 wValue, u16 wIndex, u8* data, u16 wLength, u32 timeout) = 0;
+    virtual s32 GetDescriptor(libusb_device_handle* dev_handle, u8 desc_type, u8 desc_index,
+                              u8* data, s32 length) = 0;
+    virtual s32 GetStringDescriptor(libusb_device_handle* dev_handle, u8 desc_index, u16 langid,
+                                    u8* data, s32 length) = 0;
+    virtual s32 GetStringDescriptorAscii(libusb_device_handle* dev_handle, u8 desc_index, u8* data,
+                                         s32 length) = 0;
     virtual s32 SubmitTransfer(libusb_transfer* transfer) = 0;
 
     virtual s32 TryLockEvents() = 0;
@@ -216,6 +222,18 @@ public:
                         u16 wIndex, u8* data, u16 wLength, u32 timeout) override {
         return libusb_control_transfer(dev_handle, bmRequestType, bRequest, wValue, wIndex, data,
                                        wLength, timeout);
+    }
+    s32 GetDescriptor(libusb_device_handle* dev_handle, u8 desc_type, u8 desc_index, u8* data,
+                      s32 length) override {
+        return libusb_get_descriptor(dev_handle, desc_type, desc_index, data, length);
+    }
+    s32 GetStringDescriptor(libusb_device_handle* dev_handle, u8 desc_index, u16 langid, u8* data,
+                            s32 length) override {
+        return libusb_get_string_descriptor(dev_handle, desc_index, langid, data, length);
+    }
+    s32 GetStringDescriptorAscii(libusb_device_handle* dev_handle, u8 desc_index, u8* data,
+                                 s32 length) override {
+        return libusb_get_string_descriptor_ascii(dev_handle, desc_index, data, length);
     }
     s32 SubmitTransfer(libusb_transfer* transfer) override {
         return libusb_submit_transfer(transfer);
@@ -407,6 +425,34 @@ public:
                         u16 wIndex, u8* data, u16 wLength, u32 timeout) override {
         LOG_WARNING(Lib_Usbd, "Backend has not handled control transfers");
         return LIBUSB_ERROR_PIPE;
+    }
+    s32 GetDescriptor(libusb_device_handle* dev_handle, u8 desc_type, u8 desc_index, u8* data,
+                      s32 length) override {
+        if (!data || length < 0) {
+            return LIBUSB_ERROR_INVALID_PARAM;
+        }
+        if (desc_type != LIBUSB_DT_DEVICE || desc_index != 0) {
+            return LIBUSB_ERROR_NOT_SUPPORTED;
+        }
+
+        const auto desc = FillDeviceDescriptor();
+        if (!desc) {
+            return LIBUSB_ERROR_IO;
+        }
+        const size_t descriptor_size = sizeof(libusb_device_descriptor);
+        const size_t copy_size = static_cast<size_t>(length) < descriptor_size
+                                     ? static_cast<size_t>(length)
+                                     : descriptor_size;
+        std::memcpy(data, desc, copy_size);
+        return static_cast<s32>(copy_size);
+    }
+    s32 GetStringDescriptor(libusb_device_handle* dev_handle, u8 desc_index, u16 langid, u8* data,
+                            s32 length) override {
+        return LIBUSB_ERROR_NOT_SUPPORTED;
+    }
+    s32 GetStringDescriptorAscii(libusb_device_handle* dev_handle, u8 desc_index, u8* data,
+                                 s32 length) override {
+        return LIBUSB_ERROR_NOT_SUPPORTED;
     }
     s32 SubmitTransfer(libusb_transfer* transfer) override {
         ASSERT(transfer->type == LIBUSB_TRANSFER_TYPE_INTERRUPT);
