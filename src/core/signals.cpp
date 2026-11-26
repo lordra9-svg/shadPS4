@@ -250,6 +250,25 @@ static s32 NativeSiCodeToGuest(s32 sig, s32 code) {
 void SignalHandler(int sig, siginfo_t* info, void* raw_context) {
     using namespace Libraries::Kernel;
     auto* thread = g_curthread;
+
+    if (sig == SIGSLEEP) {
+        Ucontext context{info, reinterpret_cast<ucontext_t*>(raw_context)};
+        if (thread) {
+            thread->suspended_context = context.uc_mcontext;
+            thread->is_suspended_in_signal = true;
+        }
+        // Sleep thread until signal is received again
+        sigset_t sigset;
+        sigemptyset(&sigset);
+        sigaddset(&sigset, SIGSLEEP);
+        int sleep_signal{};
+        sigwait(&sigset, &sleep_signal);
+        if (thread) {
+            thread->is_suspended_in_signal = false;
+        }
+        return;
+    }
+
     const auto* signals = Signals::Instance();
 
     auto* code_address = Common::GetRip(raw_context);
@@ -297,21 +316,6 @@ void SignalHandler(int sig, siginfo_t* info, void* raw_context) {
         }
 
         UNREACHABLE_MSG("Unhandled signal {} at code address {}", sig, fmt::ptr(code_address));
-    }
-    case SIGSLEEP: {
-        if (thread) {
-            thread->suspended_context = context.uc_mcontext;
-            thread->is_suspended_in_signal = true;
-        }
-        // Sleep thread until signal is received again
-        sigset_t sigset;
-        sigemptyset(&sigset);
-        sigaddset(&sigset, SIGSLEEP);
-        sigwait(&sigset, &sig);
-        if (thread) {
-            thread->is_suspended_in_signal = false;
-        }
-        break;
     }
     case SIGUSR1:
         if (thread) {

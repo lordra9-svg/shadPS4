@@ -10,6 +10,9 @@
 
 #ifdef _WIN32
 #define SIGSLEEP -1
+#elif defined(SIGRTMIN)
+// Realtime signals queue, so a pause and a resume sent back to back cannot coalesce.
+#define SIGSLEEP (SIGRTMIN + 4)
 #else
 #define SIGSLEEP SIGVTALRM
 #endif
