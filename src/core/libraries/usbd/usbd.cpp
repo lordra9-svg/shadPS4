@@ -57,13 +57,13 @@ void PS4_SYSV_ABI sceUsbdFreeDeviceList(SceUsbdDevice** list, s32 unref_devices)
 SceUsbdDevice* PS4_SYSV_ABI sceUsbdRefDevice(SceUsbdDevice* device) {
     LOG_DEBUG(Lib_Usbd, "called");
 
-    return libusb_ref_device(device);
+    return usb_backend->RefDevice(device);
 }
 
 void PS4_SYSV_ABI sceUsbdUnrefDevice(SceUsbdDevice* device) {
     LOG_DEBUG(Lib_Usbd, "called");
 
-    libusb_unref_device(device);
+    usb_backend->UnrefDevice(device);
 }
 
 s32 PS4_SYSV_ABI sceUsbdGetConfiguration(SceUsbdDeviceHandle* dev_handle, s32* config) {

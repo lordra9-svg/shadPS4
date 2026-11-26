@@ -72,6 +72,8 @@ public:
 
     virtual s64 GetDeviceList(libusb_device*** list) = 0;
     virtual void FreeDeviceList(libusb_device** list, s32 unref_devices) = 0;
+    virtual libusb_device* RefDevice(libusb_device* dev) = 0;
+    virtual void UnrefDevice(libusb_device* dev) = 0;
 
     virtual s32 GetConfiguration(libusb_device_handle* dev, s32* config) = 0;
     virtual s32 GetDeviceDescriptor(libusb_device* dev, libusb_device_descriptor* desc) = 0;
@@ -136,6 +138,12 @@ public:
     }
     void FreeDeviceList(libusb_device** list, s32 unref_devices) override {
         libusb_free_device_list(list, unref_devices);
+    }
+    libusb_device* RefDevice(libusb_device* dev) override {
+        return libusb_ref_device(dev);
+    }
+    void UnrefDevice(libusb_device* dev) override {
+        libusb_unref_device(dev);
     }
 
     s32 GetConfiguration(libusb_device_handle* dev, s32* config) override {
@@ -277,7 +285,14 @@ class UsbEmulatedBackend : public UsbRealBackend {
 public:
     s64 GetDeviceList(libusb_device*** list) override {
         auto** fake = static_cast<libusb_device**>(calloc(2, sizeof(libusb_device*)));
+        if (!fake) {
+            return LIBUSB_ERROR_NO_MEM;
+        }
         fake[0] = GetDevice(nullptr);
+        if (!fake[0]) {
+            free(fake);
+            return LIBUSB_ERROR_NO_MEM;
+        }
         fake[1] = nullptr;
         *list = fake;
 
@@ -289,14 +304,31 @@ public:
         }
 
         if (unref_devices) {
-            int i = 0;
-            libusb_device* dev;
-
-            while ((dev = list[i++]) != nullptr) {
-                free(dev);
+            for (int i = 0; list[i] != nullptr; ++i) {
+                UnrefDevice(list[i]);
             }
         }
         free(list);
+    }
+    libusb_device* RefDevice(libusb_device* dev) override {
+        if (dev) {
+            auto* device = reinterpret_cast<UsbDevice*>(dev);
+            device->refcnt = device->refcnt + 1;
+        }
+        return dev;
+    }
+    void UnrefDevice(libusb_device* dev) override {
+        if (!dev) {
+            return;
+        }
+        auto* device = reinterpret_cast<UsbDevice*>(dev);
+        const long refcnt = device->refcnt;
+        if (refcnt > 0) {
+            device->refcnt = refcnt - 1;
+            if (refcnt == 1) {
+                free(device);
+            }
+        }
     }
 
     s32 GetConfiguration(libusb_device_handle* dev, s32* config) override {
@@ -350,23 +382,39 @@ public:
     }
 
     s32 OpenDevice(libusb_device* dev, libusb_device_handle** dev_handle) override {
-        auto* _dev_handle = static_cast<UsbDeviceHandle*>(calloc(1, sizeof(libusb_device_handle*)));
+        if (!dev || !dev_handle) {
+            return LIBUSB_ERROR_INVALID_PARAM;
+        }
+        auto* _dev_handle = static_cast<UsbDeviceHandle*>(calloc(1, sizeof(UsbDeviceHandle)));
         if (!_dev_handle) {
             return LIBUSB_ERROR_NO_MEM;
         }
+        RefDevice(dev);
         _dev_handle->dev = dev;
         *dev_handle = reinterpret_cast<libusb_device_handle*>(_dev_handle);
         return LIBUSB_SUCCESS;
     }
     void CloseDevice(libusb_device_handle* dev_handle) override {
+        if (!dev_handle) {
+            return;
+        }
         LOG_WARNING(Lib_Usbd, "Guest decided to close device, might be an implementation issue");
+        UnrefDevice(reinterpret_cast<UsbDeviceHandle*>(dev_handle)->dev);
         free(dev_handle);
     }
     libusb_device* GetDevice(libusb_device_handle* dev_handle) override {
+        if (dev_handle) {
+            return reinterpret_cast<UsbDeviceHandle*>(dev_handle)->dev;
+        }
+
         const auto desc = FillDeviceDescriptor();
         ASSERT(desc);
 
         const auto fake = static_cast<UsbDevice*>(calloc(1, sizeof(UsbDevice)));
+        if (!fake) {
+            return nullptr;
+        }
+        fake->refcnt = 1;
         fake->bus_number = 0;
         fake->port_number = 0;
         fake->device_address = 0;
@@ -382,8 +430,17 @@ public:
         return LIBUSB_SUCCESS;
     }
     libusb_device_handle* OpenDeviceWithVidPid(u16 vendor_id, u16 product_id) override {
+        libusb_device* device = GetDevice(nullptr);
+        if (!device) {
+            return nullptr;
+        }
+
         libusb_device_handle* dev_handle = nullptr;
-        OpenDevice(GetDevice(nullptr), &dev_handle);
+        if (OpenDevice(device, &dev_handle) != LIBUSB_SUCCESS) {
+            UnrefDevice(device);
+            return nullptr;
+        }
+        UnrefDevice(device);
         return dev_handle;
     }
     s32 ResetDevice(libusb_device_handle* dev_handle) override {
