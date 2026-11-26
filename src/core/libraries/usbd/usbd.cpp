@@ -187,13 +187,13 @@ s32 PS4_SYSV_ABI sceUsbdSetInterfaceAltSetting(SceUsbdDeviceHandle* dev_handle,
     LOG_DEBUG(Lib_Usbd, "called");
 
     return libusb_to_orbis_error(
-        libusb_set_interface_alt_setting(dev_handle, interface_number, alternate_setting));
+        usb_backend->SetInterfaceAltSetting(dev_handle, interface_number, alternate_setting));
 }
 
 s32 PS4_SYSV_ABI sceUsbdClearHalt(SceUsbdDeviceHandle* dev_handle, uint8_t endpoint) {
     LOG_DEBUG(Lib_Usbd, "called");
 
-    return libusb_to_orbis_error(libusb_clear_halt(dev_handle, endpoint));
+    return libusb_to_orbis_error(usb_backend->ClearHalt(dev_handle, endpoint));
 }
 
 s32 PS4_SYSV_ABI sceUsbdResetDevice(SceUsbdDeviceHandle* dev_handle) {

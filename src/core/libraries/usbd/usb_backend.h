@@ -91,6 +91,9 @@ public:
 
     virtual s32 SetConfiguration(libusb_device_handle* dev_handle, s32 configuration) = 0;
     virtual s32 ClaimInterface(libusb_device_handle* dev_handle, s32 interface_number) = 0;
+    virtual s32 SetInterfaceAltSetting(libusb_device_handle* dev_handle, s32 interface_number,
+                                       s32 alternate_setting) = 0;
+    virtual s32 ClearHalt(libusb_device_handle* dev_handle, u8 endpoint) = 0;
     virtual libusb_device_handle* OpenDeviceWithVidPid(u16 vendor_id, u16 product_id) = 0;
     virtual s32 ResetDevice(libusb_device_handle* dev_handle) = 0;
 
@@ -180,6 +183,13 @@ public:
     }
     s32 ClaimInterface(libusb_device_handle* dev_handle, s32 interface_number) override {
         return libusb_claim_interface(dev_handle, interface_number);
+    }
+    s32 SetInterfaceAltSetting(libusb_device_handle* dev_handle, s32 interface_number,
+                               s32 alternate_setting) override {
+        return libusb_set_interface_alt_setting(dev_handle, interface_number, alternate_setting);
+    }
+    s32 ClearHalt(libusb_device_handle* dev_handle, u8 endpoint) override {
+        return libusb_clear_halt(dev_handle, endpoint);
     }
     libusb_device_handle* OpenDeviceWithVidPid(u16 vendor_id, u16 product_id) override {
         return libusb_open_device_with_vid_pid(g_libusb_context, vendor_id, product_id);
@@ -379,6 +389,13 @@ public:
         return LIBUSB_SUCCESS;
     }
     s32 ClaimInterface(libusb_device_handle* dev_handle, s32 interface_number) override {
+        return LIBUSB_SUCCESS;
+    }
+    s32 SetInterfaceAltSetting(libusb_device_handle* dev_handle, s32 interface_number,
+                               s32 alternate_setting) override {
+        return LIBUSB_SUCCESS;
+    }
+    s32 ClearHalt(libusb_device_handle* dev_handle, u8 endpoint) override {
         return LIBUSB_SUCCESS;
     }
     libusb_device_handle* OpenDeviceWithVidPid(u16 vendor_id, u16 product_id) override {
