@@ -7,6 +7,7 @@
 #include "common/assert.h"
 #include "common/logging/log.h"
 #include "common/thread.h"
+#include "vdecsw_frame_buffer.h"
 #include "video_utils.h"
 #include "videodec_error.h"
 
@@ -373,12 +374,20 @@ s32 VdecDecoder::WriteFrame(OrbisVdecswOutputInfo& output_info, AVFrame& frame,
                             const OrbisVdecswFrameBuffer& frame_buffer, bool is_last_frame) {
     const u64 info_size =
         m_is_avc ? sizeof(OrbisVdecswAvcPictureInfo) : sizeof(OrbisVdecswHevcPictureInfo);
-    Videodec::CopyNV12Data((u8*)frame_buffer.frame_buffer,
-                           frame_buffer.frame_buffer_size - info_size, frame);
-
     const auto width = Common::AlignUp<u32>(frame.width, 16);
     const auto pitch = Common::AlignUp<u32>(frame.width, 64);
     const auto height = Common::AlignUp<u32>(frame.height, 16);
+    const u64 frame_size = Nv12FrameDataSize(frame.width, frame.height);
+
+    if (!IsFrameBufferLargeEnough(frame_buffer.frame_buffer_size, frame.width, frame.height,
+                                  info_size)) {
+        LOG_ERROR(Lib_Vdecsw,
+                  "Frame buffer of {} bytes is too small for a {}x{} frame plus {} bytes of info",
+                  frame_buffer.frame_buffer_size, frame.width, frame.height, info_size);
+        return ORBIS_VDECSW_ERROR_FRAME_BUFFER_SIZE;
+    }
+
+    Videodec::CopyNV12Data((u8*)frame_buffer.frame_buffer, frame_size, frame);
 
     output_info.is_valid = true;
     output_info.is_last_frame = is_last_frame;
