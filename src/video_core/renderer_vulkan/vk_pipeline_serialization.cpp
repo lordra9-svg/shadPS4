@@ -8,6 +8,7 @@
 #include "video_core/cache_storage.h"
 #include "video_core/renderer_vulkan/vk_instance.h"
 #include "video_core/renderer_vulkan/vk_pipeline_cache.h"
+#include "video_core/renderer_vulkan/vk_shader_patch.h"
 #include "video_core/renderer_vulkan/vk_shader_util.h"
 
 namespace Serialization {
@@ -268,14 +269,14 @@ bool PipelineCache::LoadPipelineStage(Serialization::Archive& ar, size_t stage) 
     vk::ShaderModule module{};
 
     std::optional<std::vector<u32>> patch{};
-    if (EmulatorSettings.IsPatchShaders()) {
+    const bool patch_enabled = EmulatorSettings.IsPatchShaders();
+    if (patch_enabled) {
         patch = GetShaderPatch(program->info.pgm_hash, program->info.hw_stage, perm_idx, "spv");
     }
-    std::span<const u32> code = spv;
-    if (patch) {
+    const std::span<const u32> code = SelectShaderBinary(spv, patch, patch_enabled);
+    if (patch_enabled && patch && !patch->empty()) {
         LOG_INFO(Loader, "Loaded patch for {} shader {:#x}", program->info.hw_stage,
                  program->info.pgm_hash);
-        code = *patch;
     }
 
     auto [it_pgm, new_program] = program_cache.try_emplace(program->info.pgm_hash);

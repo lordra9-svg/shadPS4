@@ -19,6 +19,7 @@
 #include "video_core/renderer_vulkan/vk_instance.h"
 #include "video_core/renderer_vulkan/vk_pipeline_serialization.h"
 #include "video_core/renderer_vulkan/vk_scheduler.h"
+#include "video_core/renderer_vulkan/vk_shader_patch.h"
 #include "video_core/renderer_vulkan/vk_shader_util.h"
 
 namespace Vulkan {
@@ -681,14 +682,13 @@ vk::ShaderModule PipelineCache::CompileModule(Shader::Info& info, Shader::Runtim
 
     vk::ShaderModule module;
 
+    const bool patch_enabled = EmulatorSettings.IsPatchShaders();
     auto patch = GetShaderPatch(info.pgm_hash, info.hw_stage, perm_idx, "spv");
-    const bool is_patched = patch && EmulatorSettings.IsPatchShaders();
+    const bool is_patched = patch_enabled && patch && !patch->empty();
     if (is_patched) {
         LOG_INFO(Loader, "Loaded patch for {} shader {:#x}", info.hw_stage, info.pgm_hash);
-        module = CompileSPV(*patch, instance.GetDevice());
-    } else {
-        module = CompileSPV(spv, instance.GetDevice());
     }
+    module = CompileSPV(SelectShaderBinary(spv, patch, patch_enabled), instance.GetDevice());
 
     RegisterShaderBinary(std::move(spv), info.pgm_hash, perm_idx);
 
@@ -805,23 +805,29 @@ void PipelineCache::DumpShader(std::span<const u32> code, u64 hash, Shader::HwSt
     file.WriteSpan(code);
 }
 
+std::optional<std::vector<u32>> LoadShaderPatch(const std::filesystem::path& patch_dir,
+                                                const std::string& filename) {
+    using namespace Common::FS;
+    if (!std::filesystem::exists(patch_dir)) {
+        std::filesystem::create_directories(patch_dir);
+    }
+    const auto filepath = patch_dir / filename;
+    if (!std::filesystem::exists(filepath)) {
+        return {};
+    }
+    const auto file = IOFile{filepath, FileAccessMode::Read};
+    std::vector<u32> code(file.GetSize() / sizeof(u32));
+    file.Read(code);
+    return code;
+}
+
 std::optional<std::vector<u32>> PipelineCache::GetShaderPatch(u64 hash, Shader::HwStage stage,
                                                               size_t perm_idx,
                                                               std::string_view ext) {
 
     using namespace Common::FS;
     const auto patch_dir = GetUserPath(PathType::ShaderDir) / "patch";
-    if (!std::filesystem::exists(patch_dir)) {
-        std::filesystem::create_directories(patch_dir);
-    }
     const auto filename = fmt::format("{}.{}", GetShaderName(stage, hash, perm_idx), ext);
-    const auto filepath = patch_dir / filename;
-    if (!std::filesystem::exists(filepath)) {
-        return {};
-    }
-    const auto file = IOFile{patch_dir / filename, FileAccessMode::Read};
-    std::vector<u32> code(file.GetSize() / sizeof(u32));
-    file.Read(code);
-    return code;
+    return LoadShaderPatch(patch_dir, filename);
 }
 } // namespace Vulkan
