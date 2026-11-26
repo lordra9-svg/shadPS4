@@ -419,6 +419,7 @@ private:
     std::mutex m_mutex_connected;
     std::mutex m_mutex_authenticated;
 
+    std::mutex m_lifecycle_mutex;
     std::thread m_thread_connect;
     std::thread m_thread_reader;
     std::thread m_thread_writer;

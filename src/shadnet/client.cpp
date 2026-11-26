@@ -66,6 +66,11 @@ ShadNetClient::~ShadNetClient() {
 
 void ShadNetClient::Start(const std::string& host, u16 port, const std::string& npid,
                           const std::string& password, const std::string& token) {
+    std::lock_guard lock{m_lifecycle_mutex};
+    if (m_thread_connect.joinable() || m_thread_reader.joinable() || m_thread_writer.joinable()) {
+        LOG_WARNING(ShadNet, "ShadNet: client already started");
+        return;
+    }
     m_host = host;
     m_port = port;
     m_npid = npid;
@@ -76,6 +81,7 @@ void ShadNetClient::Start(const std::string& host, u16 port, const std::string& 
 }
 
 void ShadNetClient::Stop() {
+    std::lock_guard lock{m_lifecycle_mutex};
     m_terminate = true;
     try {
         m_sem_connected.release();
