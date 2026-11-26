@@ -21,12 +21,6 @@
 
 namespace {
 
-std::mutex submit_mutex{};
-u32 num_requests{};
-std::condition_variable_any request_cv{};
-std::queue<std::packaged_task<void()>> req_queue{};
-std::mutex m_request{};
-
 mz_zip_archive zip_ar{};
 bool ar_is_read_only{true};
 
@@ -34,38 +28,42 @@ bool ar_is_read_only{true};
 
 namespace Storage {
 
-void ProcessIO(const std::stop_token& stoken) {
-    Common::SetCurrentThreadName("shadPS4:PipelineCacheIO");
+RequestQueue g_request_queue{};
 
-    while (!stoken.stop_requested()) {
+void RequestQueue::Push(std::packaged_task<void()>&& task) {
+    {
+        std::scoped_lock lk{m_mutex};
+        m_queue.emplace(std::move(task));
+    }
+    m_cv.notify_one();
+}
+
+void RequestQueue::Run(const std::stop_token& stoken) {
+    while (true) {
+        std::packaged_task<void()> task{};
         {
-            std::unique_lock lk{submit_mutex};
-            Common::CondvarWait(request_cv, lk, stoken, [&] { return num_requests; });
-        }
-
-        if (stoken.stop_requested()) {
-            break;
-        }
-
-        while (num_requests) {
-            std::packaged_task<void()> request{};
-            {
-                std::scoped_lock lock{m_request};
-                if (req_queue.empty()) {
-                    continue;
+            std::unique_lock lk{m_mutex};
+            Common::CondvarWait(m_cv, lk, stoken, [&] { return !m_queue.empty(); });
+            if (m_queue.empty()) {
+                // A stop request ends the worker once the queue has been drained.
+                if (stoken.stop_requested()) {
+                    break;
                 }
-                request = std::move(req_queue.front());
-                req_queue.pop();
+                continue;
             }
+            task = std::move(m_queue.front());
+            m_queue.pop();
+        }
 
-            if (request.valid()) {
-                request();
-                request.get_future().wait();
-            }
-
-            --num_requests;
+        if (task.valid()) {
+            task();
         }
     }
+}
+
+void ProcessIO(const std::stop_token& stoken) {
+    Common::SetCurrentThreadName("shadPS4:PipelineCacheIO");
+    g_request_queue.Run(stoken);
 }
 
 constexpr std::string GetBlobFileExtension(BlobType type) {
@@ -139,30 +137,24 @@ void DataBase::Close() {
 
 template <typename T>
 bool WriteVector(const BlobType type, std::filesystem::path&& path_, std::vector<T>&& v) {
-    {
-        auto request = std::packaged_task<void()>{[=]() {
-            auto path{path_};
-            path.replace_extension(GetBlobFileExtension(type));
-            if (EmulatorSettings.IsPipelineCacheArchived()) {
-                ASSERT_MSG(!ar_is_read_only,
-                           "The archive is read-only. Did you forget to call `FinishPreload`?");
-                if (!mz_zip_writer_add_mem(&zip_ar, path.string().c_str(), v.data(),
-                                           v.size() * sizeof(T), MZ_BEST_COMPRESSION)) {
-                    LOG_ERROR(Render, "Failed to add {} to the archive", path.string().c_str());
-                }
-            } else {
-                using namespace Common::FS;
-                const auto file = IOFile{path, FileAccessMode::Create};
-                file.Write(v);
+    std::packaged_task<void()> request{[=]() {
+        auto path{path_};
+        path.replace_extension(GetBlobFileExtension(type));
+        if (EmulatorSettings.IsPipelineCacheArchived()) {
+            ASSERT_MSG(!ar_is_read_only,
+                       "The archive is read-only. Did you forget to call `FinishPreload`?");
+            if (!mz_zip_writer_add_mem(&zip_ar, path.string().c_str(), v.data(),
+                                       v.size() * sizeof(T), MZ_BEST_COMPRESSION)) {
+                LOG_ERROR(Render, "Failed to add {} to the archive", path.string().c_str());
             }
-        }};
-        std::scoped_lock lock{m_request};
-        req_queue.emplace(std::move(request));
-    }
+        } else {
+            using namespace Common::FS;
+            const auto file = IOFile{path, FileAccessMode::Create};
+            file.Write(v);
+        }
+    }};
 
-    std::scoped_lock lk{submit_mutex};
-    ++num_requests;
-    request_cv.notify_one();
+    g_request_queue.Push(std::move(request));
     return true;
 }
 

@@ -7,9 +7,13 @@
 #include "common/singleton.h"
 #include "common/types.h"
 
+#include <condition_variable>
 #include <functional>
+#include <future>
+#include <mutex>
 #include <thread>
 #include <vector>
+#include <queue>
 
 namespace Storage {
 
@@ -18,6 +22,17 @@ enum class BlobType : u32 {
     ShaderBinary,
     PipelineKey,
     ShaderProfile,
+};
+
+class RequestQueue {
+public:
+    void Push(std::packaged_task<void()>&& task);
+    void Run(const std::stop_token& stoken);
+
+private:
+    std::mutex m_mutex;
+    std::condition_variable_any m_cv;
+    std::queue<std::packaged_task<void()>> m_queue;
 };
 
 class DataBase {
