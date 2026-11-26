@@ -6,11 +6,13 @@
 #include <cstring>
 #include <memory>
 #include <thread>
+#include <vector>
 #include <SDL3/SDL_audio.h>
 #include <SDL3/SDL_hints.h>
 
 #include "common/logging/log.h"
 #include "core/emulator_settings.h"
+#include "core/libraries/audio/audio_queue.h"
 #include "core/libraries/audio/audioout.h"
 #include "core/libraries/audio/audioout_backend.h"
 #include "core/libraries/kernel/threads.h"
@@ -253,12 +255,18 @@ private:
     }
 
     void ManageAudioQueue() {
-        const auto queued = SDL_GetAudioStreamQueued(stream);
+        const s32 queued = SDL_GetAudioStreamQueued(stream);
+        const s32 discard = AudioQueueBytesToDiscard(queued, static_cast<s32>(queue_threshold));
 
-        if (queued >= queue_threshold) [[unlikely]] {
-            LOG_DEBUG(Lib_AudioOut, "Clearing backed up audio queue ({} >= {})", queued,
-                      queue_threshold);
-            SDL_ClearAudioStream(stream);
+        if (discard > 0) [[unlikely]] {
+            LOG_DEBUG(Lib_AudioOut,
+                      "Dropping {} bytes of backed up audio ({} queued, {} threshold)", discard,
+                      queued, queue_threshold);
+
+            std::vector<u8> dropped(static_cast<size_t>(discard));
+            if (SDL_GetAudioStreamData(stream, dropped.data(), discard) < 0) {
+                SDL_ClearAudioStream(stream);
+            }
             CalculateQueueThreshold();
         }
     }
